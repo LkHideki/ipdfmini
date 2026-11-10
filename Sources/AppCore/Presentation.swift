@@ -187,6 +187,8 @@ public enum Labels {
 
 /// Estado de um documento na fila.
 public enum DocumentStatus: Sendable, Equatable {
+    /// Na fila de análise, esperando vaga de processo filho (pastas grandes).
+    case waiting
     case analyzing
     case ready
     case warnings(Int)
@@ -195,6 +197,7 @@ public enum DocumentStatus: Sendable, Equatable {
 
     public var title: String {
         switch self {
+        case .waiting: "Na fila"
         case .analyzing: "Analisando…"
         case .ready: "Pronto"
         case .warnings(let n): n == 1 ? "1 aviso" : "\(n) avisos"
@@ -218,5 +221,38 @@ public enum DocumentStatus: Sendable, Equatable {
     /// Avisos de análise + de plano + riscos do candidato escolhido.
     public static func warningCount(_ r: PlanResult) -> Int {
         AnalysisSummary(r.analysis).warnings.count + r.plan.warnings.count + r.chosen.risks.count
+    }
+}
+
+/// Textos do sumário no inspetor (§9.2).
+public enum OutlineDisplay {
+    /// "Sumário: 9 itens", "sem sumário na origem"; `nil` enquanto não se sabe.
+    public static func source(_ count: Int?) -> String? {
+        guard let count else { return nil }
+        switch count {
+        case 0: return "sem sumário na origem"
+        case 1: return "Sumário: 1 item"
+        default: return "Sumário: \(count) itens"
+        }
+    }
+
+    /// "9 de 9 preservados".
+    public static func preserved(_ n: NavigationSummary) -> String {
+        n.sourceOutlineItems == 0 ? "sem sumário na origem" : "\(n.preservedOutlineItems) de \(n.sourceOutlineItems) preservados"
+    }
+
+    /// Contagens da exportação: o campo `navigation` do relatório ou, em relatório
+    /// antigo, as métricas do invariante 5 — só se aprovado, porque reprovado não diz
+    /// quantos itens ficaram no lugar.
+    public static func counts(_ r: ConversionReport) -> NavigationSummary? {
+        if let n = r.navigation { return n }
+        guard let inv = r.validation?.result("5"), inv.status == .passed,
+              let out = inv.metrics.first(where: { $0.name == "itens de sumário" }),
+              let src = inv.metrics.first(where: { $0.name == "itens de sumário na origem" }) else { return nil }
+        let s = Int(src.value), o = Int(out.value)
+        let links = inv.metrics.first { $0.name == "links internos verificados" }.map { Int($0.value) } ?? 0
+        return NavigationSummary(sourceOutlineItems: s, outputOutlineItems: o,
+                                 preservedOutlineItems: s,
+                                 sourceInternalLinks: links, outputInternalLinks: links)
     }
 }

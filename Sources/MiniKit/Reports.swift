@@ -131,6 +131,8 @@ public struct ConversionReport: Codable, Sendable, Equatable {
     public var write: WriteReport
     /// `nil` quando a validação foi desligada.
     public var validation: ValidationReport?
+    /// Contagens de sumário e links (aditivo: JSON de versões anteriores não traz).
+    public var navigation: NavigationSummary? = nil
 
     public var chosen: CandidateSummary { candidates[chosenIndex] }
     /// Sem validação conta como aprovado: quem desligou assumiu o risco.

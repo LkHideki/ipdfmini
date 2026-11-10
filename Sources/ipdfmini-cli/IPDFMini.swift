@@ -162,9 +162,14 @@ struct Plan: AsyncParsableCommand {
 
     func run() async throws {
         try await guarded {
-            let r = try await Converter().plan(input: try inputURL(pdf), options: try conversion.options())
+            let input = try inputURL(pdf)
+            let options = try conversion.options()
+            let r = try await Converter().plan(input: input, options: options)
             guard json else { print(Text.plan(r)); return }
-            print(full ? try Output.json(FullPlanReport(r)) : try Output.json(PlanReport(r)))
+            guard full else { print(try Output.json(PlanReport(r))); return }
+            // O app mostra "Sumário: N itens" da origem sem abrir o PDF por conta própria.
+            let outline = NavigationSummary.outlineItemCount(url: input, password: options.password)
+            print(try Output.json(FullPlanReport(r, sourceOutlineItems: outline)))
         }
     }
 }
@@ -279,6 +284,10 @@ enum Text {
         out += planLines(r.plan)
         out.append("Saída: \(r.output) · \(r.write.outputPageCount) páginas · \(r.write.bytes) bytes")
         out += r.write.warnings.map { "  aviso: " + Describe.writeWarning($0) }
+        if let n = r.navigation {
+            out.append(n.sourceOutlineItems == 0 ? "Sumário: sem sumário na origem"
+                       : "Sumário: \(n.preservedOutlineItems) de \(n.sourceOutlineItems) preservados")
+        }
         if let v = r.validation {
             out.append("Validação:")
             for i in v.results {

@@ -8,8 +8,14 @@ struct InspectorView: View {
     @Environment(Library.self) private var library
     @Bindable var item: DocumentItem
 
+    /// Toda edição passa pela `Library`: vira ajuste próprio deste documento.
+    private var settings: Binding<ConversionSettings> {
+        Binding(get: { item.settings }, set: { library.update(item, $0) })
+    }
+
     var body: some View {
         Form {
+            scopeSection
             profileSection
             strategySection
             cropSection
@@ -21,11 +27,34 @@ struct InspectorView: View {
         .formStyle(.grouped)
     }
 
+    // MARK: - Padrão do lote × ajustes próprios
+
+    private var scopeSection: some View {
+        Section {
+            if library.hasOwnSettings(item) {
+                Label("Ajustes próprios deste documento", systemImage: "slider.horizontal.3")
+                HStack {
+                    Button("Tornar padrão") { library.useAsDefault(item) }
+                        .help("Os documentos sem ajustes próprios passam a usar estes ajustes")
+                    Button("Voltar ao padrão") { library.resetToDefault(item) }
+                }
+                .buttonStyle(.glass)
+            } else {
+                Label("Segue o padrão do lote", systemImage: "square.stack.3d.down.right")
+                    .foregroundStyle(.secondary)
+            }
+        } footer: {
+            Text("Mudar um ajuste aqui vale só para este documento; no lote, os demais usam o padrão.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
     // MARK: - Perfil
 
     private var profileSection: some View {
         Section("Perfil") {
-            Picker("Leitor e orientação", selection: $item.settings.profileID) {
+            Picker("Leitor e orientação", selection: settings.profileID) {
                 ForEach(ViewportProfile.builtIn) { p in
                     Text(Labels.profile(p)).tag(p.id)
                 }
@@ -43,7 +72,7 @@ struct InspectorView: View {
 
     private var strategySection: some View {
         Section {
-            Picker("Modo", selection: $item.settings.mode) {
+            Picker("Modo", selection: settings.mode) {
                 ForEach(Labels.modes, id: \.self) { m in
                     Text(Labels.mode(m)).tag(m)
                 }
@@ -70,7 +99,7 @@ struct InspectorView: View {
 
     private func candidateRow(_ c: CandidateSummary, chosen: Bool) -> some View {
         Button {
-            if let s = item.settings.forcing(c) { item.settings = s }
+            if let s = item.settings.forcing(c) { library.update(item, s) }
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: chosen ? "checkmark.circle.fill" : "circle")
@@ -104,7 +133,7 @@ struct InspectorView: View {
                 LabeledContent("Respiro") {
                     Text("\(Describe.number(item.settings.marginMM)) mm").monospacedDigit()
                 }
-                Slider(value: $item.settings.marginMM, in: 0...10, step: 0.5) {
+                Slider(value: settings.marginMM, in: 0...10, step: 0.5) {
                     Text("Respiro")
                 } minimumValueLabel: {
                     Text("0")
@@ -114,7 +143,7 @@ struct InspectorView: View {
                 .labelsHidden()
                 .accessibilityValue("\(Describe.number(item.settings.marginMM)) milímetros")
             }
-            Picker("Classes de escala", selection: $item.settings.classMode) {
+            Picker("Classes de escala", selection: settings.classMode) {
                 ForEach(Labels.classModes, id: \.self) { c in
                     Text(Labels.classMode(c)).tag(c)
                 }
@@ -194,6 +223,13 @@ struct InspectorView: View {
                     Text(a.sizeGroups.map { "\(Describe.size($0.size)) (\($0.pages))" }.joined(separator: "\n"))
                         .multilineTextAlignment(.trailing)
                 }
+                if let o = OutlineDisplay.source(item.sourceOutlineItems) {
+                    LabeledContent("Navegação") {
+                        Label(o, systemImage: "list.bullet.indent")
+                            .foregroundStyle(item.sourceOutlineItems == 0 ? .secondary : .primary)
+                    }
+                    .accessibilityElement(children: .combine)
+                }
             }
             .font(.callout)
         }
@@ -235,9 +271,23 @@ struct InspectorView: View {
                         .accessibilityLabel("Invariante \(i.id), \(i.title): \(Labels.invariantStatus(i.status)). \(i.detail)")
                     }
                 }
+                if let n = OutlineDisplay.counts(r) {
+                    if n.sourceOutlineItems == 0 {
+                        Label("Sumário: sem sumário na origem", systemImage: "list.bullet.indent")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Label("Sumário: \(OutlineDisplay.preserved(n))",
+                              systemImage: n.outlinePreserved ? "list.bullet.indent" : "exclamationmark.triangle")
+                            .foregroundStyle(n.outlinePreserved ? Color.green : Color.orange)
+                            .accessibilityLabel("Sumário na saída: \(OutlineDisplay.preserved(n))")
+                    }
+                }
                 if let url = item.lastExportURL {
-                    Button("Mostrar no Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
-                        .buttonStyle(.link)
+                    HStack {
+                        Button("Mostrar no Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+                        Button("Enviar por AirDrop…") { library.airDrop([url]) }
+                    }
+                    .buttonStyle(.link)
                 }
             }
         }
@@ -269,11 +319,13 @@ struct HelpView: View {
                         .accessibilityHidden(true)
                     Text("Ajuda do iPDFmini").font(.title.bold())
                 }
-                helpItem("Abrir", "Arraste PDFs para a janela ou para o ícone no Dock, ou use Arquivo › Abrir… (⌘O). Cada PDF é analisado num processo separado: um arquivo corrompido vira “Falha” na fila e o app continua aberto.")
+                helpItem("Abrir", "Arraste PDFs ou pastas para a janela ou para o ícone no Dock, ou use Arquivo › Abrir… (⌘O). Pastas entram com todos os PDFs das subpastas; arrastar mais soma à fila sem repetir. Cada PDF é analisado num processo separado (dois por vez): um arquivo corrompido vira “Falha” na fila e o app continua aberto.")
+                helpItem("Lote", "A lateral agrupa a fila por pasta. Desmarque a caixa dos documentos que não quer converter; o menu de cada pasta marca ou desmarca todos dela, e Seleção › Remover desmarcados limpa a fila. Converter selecionados (⇧⌘B) pede a pasta de destino, pode espelhar as subpastas e termina com um resumo de falhas, avisos e invariantes.")
+                helpItem("AirDrop", "Exportar e enviar por AirDrop (⇧⌘E) exporta o documento e abre o AirDrop. O resumo do lote envia todos os PDFs convertidos de uma vez. Compartilhar, na barra, oferece os demais serviços do macOS.")
                 helpItem("Origem e Mini", "Origem (⌘1) mostra a página original com a janela de recorte em laranja e as áreas removidas hachuradas. Mini (⌘2) mostra a página exportada dentro da moldura do iPad mini 7. Use as setas ← → (ou ⌘← ⌘→) para virar as páginas.")
                 helpItem("Tamanho real", "Com “Tamanho real” (⌘0) a tela do iPad mini é desenhada com 115,94 × 176,55 mm, a partir das dimensões físicas que o monitor informa. Segure o iPad ao lado para comparar.")
                 helpItem("Ajustes", "No inspetor: perfil do leitor, modo (Automático, Recorte, Recorte sem cabeçalho/rodapé, Passagem direta), respiro em mm e classes de escala. A tabela de candidatos mostra o corpo do texto em pt equivalente e quantas telas cada página de origem ocupa.")
-                helpItem("Exportar", "Exportar… (⌘E) grava “{título} — mini.pdf” e valida a saída: nenhuma tinta cortada, proporção do viewport, legibilidade, navegação e cantos.")
+                helpItem("Exportar", "Exportar… (⌘E) grava “{título} — mini.pdf” e valida a saída: nenhuma tinta cortada, proporção do viewport, legibilidade, navegação e cantos. O inspetor mostra quantos itens do sumário a origem tem e quantos chegaram à saída apontando para a página certa.")
                 helpItem("Calibração", "Arquivo › Gerar PDF de calibração… cria uma página com réguas nas bordas. Abra no leitor do iPad mini e anote a primeira marca visível em cada borda para medir a área útil real.")
             }
             .padding(24)

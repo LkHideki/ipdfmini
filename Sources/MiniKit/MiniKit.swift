@@ -185,8 +185,10 @@ public struct Converter: Sendable {
             ? try await validator.validate(analysis: planned.analysis, plan: planned.plan, source: source, output: output,
                                            writer: writer)
             : nil
+        // Contagem para a interface; falhar aqui não invalida a conversão (o inv. 5 já julga).
+        let navigation = try? NavigationSummary.measure(plan: planned.plan, source: source, output: output)
         return ConversionReport(input: input.path, output: output.path, analysis: AnalysisSummary(planned.analysis),
                                 candidates: planned.candidates, chosenIndex: planned.chosenIndex, mode: options.mode,
-                                plan: planned.plan, write: write, validation: validation)
+                                plan: planned.plan, write: write, validation: validation, navigation: navigation)
     }
 }

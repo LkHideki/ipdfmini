@@ -46,6 +46,13 @@ struct ContentView: View {
             }
         }
         .overlay(alignment: .top) { noticeBanner }
+        .sheet(isPresented: Binding(get: { library.batch != nil }, set: { if !$0 { library.closeBatch() } })) {
+            if let b = library.batch {
+                BatchSheet(session: b)
+                    .environment(library)
+                    .interactiveDismissDisabled(b.phase == .running)
+            }
+        }
     }
 
     @ViewBuilder private var detail: some View {
@@ -53,10 +60,11 @@ struct ContentView: View {
             switch item.status {
             case .failed(let message):
                 FailureView(item: item, message: message)
-            case .analyzing where item.planned == nil:
+            case .analyzing where item.planned == nil, .waiting where item.planned == nil:
                 VStack(spacing: 14) {
                     ProgressView().controlSize(.large)
-                    Text("Analisando \(item.displayName)…").font(.title3)
+                    Text(item.status == .waiting ? "\(item.displayName) aguarda vaga para análise…"
+                                                 : "Analisando \(item.displayName)…").font(.title3)
                     Text("A análise roda num processo separado; um PDF corrompido não derruba o app.")
                         .font(.callout).foregroundStyle(.secondary)
                 }
@@ -67,6 +75,8 @@ struct ContentView: View {
                         PreviewView(item: item)
                         Divider()
                         ThumbnailStrip(item: item)
+                            // Identidade por documento: a LazyHStack reaproveitava miniaturas do anterior.
+                            .id(item.id)
                             .frame(height: 146)
                     }
                 } else {
@@ -97,6 +107,29 @@ struct ContentView: View {
             .buttonStyle(.glassProminent)
             .disabled(!(library.selected.map { $0.planned != nil && $0.status != .converting } ?? false))
             .help("Exportar o PDF adaptado (⌘E)")
+        }
+        ToolbarItem(placement: .primaryAction) {
+            let urls = library.shareCandidates
+            if urls.isEmpty {
+                Button {} label: { Label("Compartilhar", systemImage: "square.and.arrow.up.on.square") }
+                    .disabled(true)
+                    .help("Exporte ou converta um documento para compartilhar")
+            } else {
+                // ShareLink abre o NSSharingServicePicker nativo (AirDrop, Mail, Mensagens…).
+                ShareLink(items: urls) {
+                    Label("Compartilhar", systemImage: "square.and.arrow.up.on.square")
+                }
+                .help(urls.count == 1 ? "Compartilhar \(urls[0].lastPathComponent)" : "Compartilhar os \(urls.count) PDFs do último lote")
+            }
+        }
+        ToolbarItem(placement: .primaryAction) {
+            Button {
+                library.airDrop(library.shareCandidates)
+            } label: {
+                Label("AirDrop", systemImage: "dot.radiowaves.left.and.right")
+            }
+            .disabled(library.shareCandidates.isEmpty)
+            .help("Enviar por AirDrop a última exportação ou o último lote")
         }
         ToolbarItem(placement: .primaryAction) {
             Button {
@@ -144,74 +177,160 @@ struct SidebarView: View {
     var body: some View {
         @Bindable var library = library
         List(selection: $library.selectionID) {
-            Section("Fila") {
-                ForEach(library.items) { item in
-                    SidebarRow(item: item)
-                        .tag(item.id)
-                        .contextMenu {
-                            Button("Mostrar no Finder") { NSWorkspace.shared.activateFileViewerSelecting([item.url]) }
-                            Button("Analisar de novo") { library.analyze(item) }
-                            if let out = item.lastExportURL {
-                                Button("Mostrar exportado no Finder") { NSWorkspace.shared.activateFileViewerSelecting([out]) }
-                            }
-                            Divider()
-                            Button("Remover da fila", role: .destructive) { library.remove(item) }
+            ForEach(library.queue.groups) { group in
+                Section {
+                    ForEach(group.entries) { entry in
+                        if let item = library.docs[entry.id] {
+                            SidebarRow(item: item, included: Binding(get: { library.isIncluded(entry.id) },
+                                                                     set: { library.setIncluded(entry.id, $0) }),
+                                       ownSettings: library.hasOwnSettings(item),
+                                       subfolder: entry.found.relativeDirectory)
+                                .tag(entry.id)
+                                .contextMenu { rowMenu(item) }
                         }
+                    }
+                } header: {
+                    GroupHeader(group: group)
                 }
-                .onDelete { idx in idx.map { library.items[$0] }.forEach(library.remove) }
             }
         }
         .overlay {
-            if library.items.isEmpty {
+            if library.queue.entries.isEmpty {
                 VStack(spacing: 8) {
                     Image(systemName: "tray.and.arrow.down").font(.largeTitle).foregroundStyle(.tertiary)
-                    Text("Arraste PDFs para cá").font(.callout).foregroundStyle(.secondary)
+                    Text("Arraste PDFs ou pastas para cá").font(.callout).foregroundStyle(.secondary)
                 }
                 .accessibilityElement(children: .combine)
             }
         }
         .safeAreaInset(edge: .bottom) {
-            Button {
-                library.presentOpenPanel()
-            } label: {
-                Label("Abrir…", systemImage: "plus")
-                    .frame(maxWidth: .infinity)
+            VStack(spacing: 8) {
+                let n = library.queue.includedCount
+                Button {
+                    library.beginBatch()
+                } label: {
+                    Label("Converter selecionados (\(n))", systemImage: "square.stack.3d.down.right")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.glassProminent)
+                .controlSize(.large)
+                .disabled(n == 0 || library.batch?.phase == .running)
+                .help("Converte em lote os documentos marcados (⇧⌘B)")
+                HStack(spacing: 8) {
+                    Button {
+                        library.presentOpenPanel()
+                    } label: {
+                        Label("Abrir…", systemImage: "plus")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .help("Abrir PDFs ou pastas (⌘O)")
+                    Menu {
+                        Button("Marcar todos") { library.setAllIncluded(true) }
+                        Button("Desmarcar todos") { library.setAllIncluded(false) }
+                        Divider()
+                        Button("Remover desmarcados da fila", role: .destructive) { library.removeExcluded() }
+                    } label: {
+                        Label("Seleção", systemImage: "checklist")
+                    }
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .disabled(library.queue.entries.isEmpty)
+                    .help("Marcar, desmarcar ou remover desmarcados")
+                    .accessibilityLabel("Ações de seleção do lote")
+                }
+                .buttonStyle(.glass)
+                .controlSize(.large)
             }
-            .buttonStyle(.glass)
-            .controlSize(.large)
             .padding(12)
-            .help("Abrir PDFs (⌘O)")
         }
+    }
+
+    @ViewBuilder private func rowMenu(_ item: DocumentItem) -> some View {
+        Button(library.isIncluded(item.id) ? "Desmarcar do lote" : "Incluir no lote") {
+            library.setIncluded(item.id, !library.isIncluded(item.id))
+        }
+        Button("Mostrar no Finder") { NSWorkspace.shared.activateFileViewerSelecting([item.url]) }
+        Button("Analisar de novo") { library.analyze(item) }
+        if let out = item.lastExportURL {
+            Button("Mostrar exportado no Finder") { NSWorkspace.shared.activateFileViewerSelecting([out]) }
+            Button("Enviar exportado por AirDrop…") { library.airDrop([out]) }
+        }
+        Divider()
+        Button("Remover da fila", role: .destructive) { library.remove(item) }
+    }
+}
+
+/// Cabeçalho da seção: pasta de origem, contagem e marcar/desmarcar todos da pasta.
+struct GroupHeader: View {
+    @Environment(Library.self) private var library
+    let group: QueueGroup
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "folder").accessibilityHidden(true)
+            Text(group.title).lineLimit(1).truncationMode(.middle)
+            Text(group.countLabel)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 4)
+            Menu {
+                Button("Marcar todos desta pasta") { library.setIncluded(group: group, true) }
+                Button("Desmarcar todos desta pasta") { library.setIncluded(group: group, false) }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .accessibilityLabel("Ações da pasta \(group.title)")
+        }
+        .help(group.root.path(percentEncoded: false))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Pasta \(group.title), \(group.includedCount) de \(group.entries.count) incluídos")
     }
 }
 
 struct SidebarRow: View {
     let item: DocumentItem
+    @Binding var included: Bool
+    var ownSettings = false
+    var subfolder = ""
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "doc.richtext")
-                .font(.title2)
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
+        HStack(spacing: 8) {
+            Toggle("Incluir no lote", isOn: $included)
+                .toggleStyle(.checkbox)
+                .labelsHidden()
+                .accessibilityLabel("Incluir \(item.displayName) no lote")
+                .help(included ? "Incluído no lote" : "Fora do lote")
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.displayName).lineLimit(2)
+                    .foregroundStyle(included ? .primary : .secondary)
                 HStack(spacing: 4) {
                     statusIcon
                     Text(item.status.title)
+                    if ownSettings {
+                        Image(systemName: "slider.horizontal.3").help("Ajustes próprios")
+                            .accessibilityLabel("ajustes próprios")
+                    }
+                    if !subfolder.isEmpty {
+                        Text("· \(subfolder)").lineLimit(1).truncationMode(.head).foregroundStyle(.secondary)
+                    }
                 }
                 .font(.caption)
                 .foregroundStyle(statusColor)
             }
+            // Caixa e texto separados: combinados, ativar a linha com o VoiceOver alternava a caixa.
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(item.displayName), \(item.status.title)\(included ? "" : ", fora do lote")\(ownSettings ? ", ajustes próprios" : "")")
         }
-        .padding(.vertical, 3)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(item.displayName), \(item.status.title)")
+        .padding(.vertical, 2)
     }
 
     @ViewBuilder private var statusIcon: some View {
         switch item.status {
         case .analyzing, .converting: ProgressView().controlSize(.mini)
+        case .waiting: Image(systemName: "clock")
         case .ready: Image(systemName: "checkmark.circle.fill")
         case .warnings: Image(systemName: "exclamationmark.triangle.fill")
         case .failed: Image(systemName: "xmark.octagon.fill")
@@ -238,9 +357,9 @@ struct WelcomeView: View {
                 .frame(width: 160, height: 160)
                 .accessibilityLabel("Ícone do iPDFmini")
             Text("iPDFmini").font(.largeTitle.bold())
-            Text("Arraste um PDF")
+            Text("Arraste PDFs ou pastas")
                 .font(.title2)
-            Text("Solte PDFs nesta janela ou no ícone do Dock. O app recorta as margens e ajusta a escala para a letra ficar legível na tela do iPad mini 7.")
+            Text("Solte PDFs ou pastas nesta janela ou no ícone do Dock; os PDFs das subpastas entram na fila. O app recorta as margens e ajusta a escala para a letra ficar legível na tela do iPad mini 7.")
                 .font(.body)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

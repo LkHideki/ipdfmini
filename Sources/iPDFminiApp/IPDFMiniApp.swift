@@ -28,7 +28,7 @@ struct IPDFMiniApp: App {
     }
 }
 
-/// Arquivos soltos no ícone do Dock ou "Abrir com" chegam por aqui.
+/// Arquivos e pastas soltos no ícone do Dock, "Abrir com" e `open -a` chegam por aqui.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func application(_ application: NSApplication, open urls: [URL]) {
         Library.shared.open(urls)
@@ -60,6 +60,22 @@ struct AppCommands: Commands {
             Button("Exportar…") { if let r = ready { library.export(r) } }
                 .keyboardShortcut("e")
                 .disabled(ready == nil)
+            Button("Exportar e enviar por AirDrop…") { if let r = ready { library.export(r, thenAirDrop: true) } }
+                .keyboardShortcut("e", modifiers: [.command, .shift])
+                .disabled(ready == nil)
+            Button("Enviar por AirDrop…") { library.airDrop(library.shareCandidates) }
+                .keyboardShortcut("e", modifiers: [.command, .option])
+                .disabled(library.shareCandidates.isEmpty)
+            Divider()
+            Button("Converter selecionados (\(library.queue.includedCount))…") { library.beginBatch() }
+                .keyboardShortcut("b", modifiers: [.command, .shift])
+                .disabled(library.queue.includedCount == 0 || library.batch != nil)
+            Button("Marcar todos para o lote") { library.setAllIncluded(true) }
+                .disabled(library.queue.entries.isEmpty)
+            Button("Desmarcar todos do lote") { library.setAllIncluded(false) }
+                .disabled(library.queue.entries.isEmpty)
+            Button("Remover desmarcados da fila") { library.removeExcluded() }
+                .disabled(library.queue.entries.allSatisfy(\.included))
             Divider()
             Menu("Gerar PDF de calibração…") {
                 Button("Retrato") { library.generateCalibration(.portrait) }

@@ -69,6 +69,13 @@ cat > "$APP/Contents/Info.plist" <<PLIST
             <key>LSHandlerRank</key><string>Alternate</string>
             <key>LSItemContentTypes</key><array><string>com.adobe.pdf</string></array>
         </dict>
+        <dict>
+            <!-- Pasta solta no ícone do Dock: entra com os PDFs das subpastas (lote). -->
+            <key>CFBundleTypeName</key><string>Pasta</string>
+            <key>CFBundleTypeRole</key><string>Viewer</string>
+            <key>LSHandlerRank</key><string>None</string>
+            <key>LSItemContentTypes</key><array><string>public.folder</string></array>
+        </dict>
     </array>
 </dict>
 </plist>

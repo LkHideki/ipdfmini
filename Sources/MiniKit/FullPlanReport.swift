@@ -12,8 +12,11 @@ public struct FullPlanReport: Codable, Sendable, Equatable {
     public var chosenIndex: Int
     public var mode: ConversionMode
     public var plan: LayoutPlan
+    /// Itens do sumário da origem; `nil` em JSON de versões anteriores.
+    public var sourceOutlineItems: Int? = nil
 
-    public init(_ r: PlanResult) {
+    public init(_ r: PlanResult, sourceOutlineItems: Int? = nil) {
+        self.sourceOutlineItems = sourceOutlineItems
         analysis = r.analysis
         candidates = r.candidates
         chosenIndex = r.chosenIndex
