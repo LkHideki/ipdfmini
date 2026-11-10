@@ -4,6 +4,8 @@
 import Foundation
 import MiniGeometry
 
+if CommandLine.arguments.count >= 3, CommandLine.arguments[1] == "s7" { S7.main(out: URL(fileURLWithPath: CommandLine.arguments[2])) }
+
 let args = CommandLine.arguments
 guard args.count >= 3, ["s1", "s2", "s3", "all"].contains(args[1]) else {
     FileHandle.standardError.write(Data("uso: ipdfmini-spikes <s1|s2|s3|all> <saida.md>\n".utf8))
