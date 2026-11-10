@@ -65,6 +65,25 @@ func rasterInkBox(of page: CGPDFPage, threshold: UInt8 = 200) -> CGRect? {
     return geometry.toUser(pageRect)
 }
 
+/// Raster cinza da CropBox a 2 px/pt (como `rasterInkBox`), com o mapeamento para espaço de página.
+/// Pixel (x, y) tem origem no canto superior esquerdo.
+func rasterPixels(of page: CGPDFPage) -> (pixels: [UInt8], mapping: RasterMapping) {
+    let crop = page.getBoxRect(.cropBox)
+    let geometry = PageGeometry(effectiveBox: crop, rotation: Int(page.rotationAngle))
+    let mapping = RasterMapping(pageBox: geometry.pageBox, pixelsPerPoint: 2)
+    let w = mapping.width, h = mapping.height
+    var pixels = [UInt8](repeating: 255, count: w * h)
+    pixels.withUnsafeMutableBytes { buf in
+        let ctx = CGContext(data: buf.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w,
+                            space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue)!
+        ctx.scaleBy(x: 2, y: 2)
+        ctx.concatenate(page.getDrawingTransform(.cropBox, rect: CGRect(origin: .zero, size: geometry.displaySize),
+                                                 rotate: 0, preserveAspectRatio: true))
+        ctx.drawPDFPage(page)
+    }
+    return (pixels, mapping)
+}
+
 /// Total de itens de sumário (recursivo).
 func outlineTotal(_ o: PDFOutline) -> Int {
     (0..<o.numberOfChildren).reduce(0) { $0 + 1 + outlineTotal(o.child(at: $1)!) }

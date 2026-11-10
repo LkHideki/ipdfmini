@@ -160,6 +160,10 @@ enum Assembler {
             headerFooter: canvas.headerFooter.map(geometry.toPage),
             lines: canvas.lines.map(geometry.toPage),
             columns: canvas.columns.map(geometry.toPage),
-            isScan: canvas.isScan)
+            isScan: canvas.isScan,
+            blocks: canvas.blocks.enumerated().map { i, b in
+                BlockTruth(rect: geometry.toPage(b.rect), type: b.type, column: b.column, readingOrder: i,
+                           lines: b.lines.map(geometry.toPage))
+            })
     }
 }

@@ -64,6 +64,8 @@ final class Flow {
     private(set) var lineRects: [CGRect] = []
     /// União da tinta da região: o retângulo da coluna na verdade.
     private(set) var union: CGRect?
+    /// Coluna dos blocos criados por esta região (nulo = largura total).
+    var columnIndex: Int?
 
     init(canvas: Canvas, region: CGRect) {
         self.canvas = canvas
@@ -71,7 +73,7 @@ final class Flow {
         cursor = region.maxY
     }
 
-    private func note(_ r: CGRect?) {
+    func note(_ r: CGRect?) {
         guard let r else { return }
         lineRects.append(r)
         union = union.map { $0.union(r) } ?? r

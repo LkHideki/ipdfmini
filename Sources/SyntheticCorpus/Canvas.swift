@@ -56,8 +56,38 @@ final class Canvas {
     var links: [LinkSpec] = []
     var highlights: [CGRect] = []
     var isScan = false
+    /// Blocos da verdade (M3), em espaço do usuário e em ordem de leitura = ordem de criação.
+    var blocks: [OpenBlock] = []
+    private var current: (type: String, column: Int?, ink: Int, lines: Int)?
+
+    struct OpenBlock {
+        var rect: CGRect
+        var type: String
+        var column: Int?
+        var lines: [CGRect]
+    }
 
     init(ctx: CGContext) { self.ctx = ctx }
+
+    /// União dos blocos criados a partir do índice `start` (tinta de uma coluna ou da página).
+    func blocksUnion(from start: Int) -> CGRect? {
+        blocks[start...].map(\.rect).reduce(nil) { (acc: CGRect?, r: CGRect) in acc.map { $0.union(r) } ?? r }
+    }
+
+    /// Tudo o que `body` desenha vira um bloco: o retângulo é a união da tinta registrada
+    /// e as linhas são as de texto registradas, então a verdade nasce do mesmo código que
+    /// desenha e não há como o bloco divergir da tinta. Blocos não se aninham.
+    /// Chame na ordem de leitura.
+    func block(_ type: String, column: Int?, _ body: () -> Void) {
+        precondition(current == nil, "SyntheticCorpus: bloco aninhado")
+        current = (type, column, ink.count, lines.count)
+        body()
+        let o = current!
+        current = nil
+        precondition(ink.count > o.ink, "SyntheticCorpus: bloco '\(type)' sem tinta")
+        let rect = ink[o.ink...].dropFirst().reduce(ink[o.ink]) { $0.union($1) }
+        blocks.append(OpenBlock(rect: rect, type: type, column: column, lines: Array(lines[o.lines...])))
+    }
 
     func record(_ r: CGRect, role: InkRole, isText: Bool) {
         switch role {
@@ -118,7 +148,7 @@ final class Canvas {
     @discardableResult
     func text(_ s: String, font: CTFont, at p: CGPoint, align: TextAlign = .left, angle: CGFloat = 0,
               gray: CGFloat = 0, role: InkRole = .body, justifyWidth: CGFloat? = nil,
-              recordWords: Bool = true) -> CGRect? {
+              recordWords: Bool = true, recordLine: Bool = true) -> CGRect? {
         var line = Canvas.makeLine(s, font: font)
         if let w = justifyWidth, let j = CTLineCreateJustifiedLine(line, 1.0, Double(w)) { line = j }
         let width = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
@@ -137,7 +167,7 @@ final class Canvas {
         if recordWords { words += s.split(separator: " ").map(String.init) }
         guard let inkLocal = Canvas.inkBounds(of: line) else { return nil }
         let r = inkLocal.applying(toUser)
-        record(r, role: role, isText: true)
+        record(r, role: role, isText: recordLine)
         return r
     }
 
@@ -163,6 +193,33 @@ final class Canvas {
         ctx.strokeEllipse(in: CGRect(x: c.x - radius, y: c.y - radius, width: 2 * radius, height: 2 * radius))
         let e = radius + width / 2
         record(CGRect(x: c.x - e, y: c.y - e, width: 2 * e, height: 2 * e), role: role, isText: false)
+    }
+
+    /// Contorno exato do traço (geometria do próprio CoreGraphics, sem aproximar por caixa de controle).
+    func strokePath(_ path: CGPath, width: CGFloat, gray: CGFloat = 0, role: InkRole = .body) {
+        ctx.setStrokeColor(gray: gray, alpha: 1)
+        ctx.setLineWidth(width)
+        ctx.setLineCap(.round)
+        ctx.setLineJoin(.round)
+        ctx.addPath(path)
+        ctx.strokePath()
+        let outline = path.copy(strokingWithWidth: width, lineCap: .round, lineJoin: .round, miterLimit: 10)
+        record(outline.boundingBoxOfPath, role: role, isText: false)
+    }
+
+    /// Contorno de retângulo, sem preenchimento; a tinta é a caixa externa da borda.
+    func strokeRect(_ r: CGRect, width: CGFloat, role: InkRole = .body) {
+        ctx.setStrokeColor(gray: 0, alpha: 1)
+        ctx.setLineWidth(width)
+        ctx.stroke(r)
+        record(r.insetBy(dx: -width / 2, dy: -width / 2), role: role, isText: false)
+    }
+
+    /// Retângulo preenchido sem borda.
+    func fillRect(_ r: CGRect, gray: CGFloat, role: InkRole = .body) {
+        ctx.setFillColor(gray: gray, alpha: 1)
+        ctx.fill(r)
+        record(r, role: role, isText: false)
     }
 
     /// Retângulo preenchido com borda; a tinta é a caixa externa da borda.

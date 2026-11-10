@@ -18,6 +18,9 @@ enum Scenarios {
         case .navigation: return navigation(TextSource(seed: 0x7A71_0009))
         case .scannedPage: return scanned(TextSource(seed: 0x5CA2_000A))
         case .mixedSizes: return mixedSizes(TextSource(seed: 0x31ED_000B))
+        case .arxivTwoColumn: return arxivTwoColumn(TextSource(seed: 0x3A2C_000C))
+        case .reportWithFigures: return reportWithFigures(TextSource(seed: 0x3E90_000D))
+        case .tallFigure: return tallFigure(TextSource(seed: 0x7A11_000E))
         }
     }
 

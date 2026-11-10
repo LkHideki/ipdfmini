@@ -17,6 +17,38 @@ public enum Scenario: String, CaseIterable, Sendable {
     case navigation
     case scannedPage
     case mixedSizes
+    // M3: segmentação em blocos, colunas e fatiamento.
+    case arxivTwoColumn
+    case reportWithFigures
+    case tallFigure
+}
+
+/// Bloco de verdade (mesma língua de `PDFAnalysis.Block`, sem depender dela).
+///
+/// - `rect`: tinta exata do bloco, em espaço de página: união da tinta registrada
+///   enquanto o bloco esteve aberto no `Canvas`. Blocos de uma página são disjuntos e
+///   sua união é a `inkBox`.
+/// - `type`: nome de `BlockType` (paragraph, heading, equation, figure, table, caption,
+///   note, list, headerFooter).
+/// - `column`: índice da coluna (0 = esquerda) dentro da seção de colunas; nulo =
+///   largura total, e também toda página de coluna única.
+/// - `readingOrder`: 0..n-1 por página; igual à ordem do array.
+/// - `lines`: tinta de cada linha, de cima para baixo; vazio em figura, tabela e equação
+///   (blocos atômicos).
+public struct BlockTruth: Codable, Sendable, Equatable {
+    public let rect: CGRect
+    public let type: String
+    public let column: Int?
+    public let readingOrder: Int
+    public let lines: [CGRect]
+
+    public init(rect: CGRect, type: String, column: Int?, readingOrder: Int, lines: [CGRect]) {
+        self.rect = rect
+        self.type = type
+        self.column = column
+        self.readingOrder = readingOrder
+        self.lines = lines
+    }
 }
 
 /// Verdade de uma página.
@@ -26,6 +58,8 @@ public enum Scenario: String, CaseIterable, Sendable {
 /// - `lines`: tinta de cada linha de texto relevante (corpo e cabeçalho/rodapé),
 ///   na ordem em que foram desenhadas; `headerFooter` marca quais são de cabeçalho/rodapé.
 /// - `columns`: tinta de cada coluna de texto do corpo (uma só em página de coluna única).
+/// - `blocks`: segmentação de referência em ordem de leitura; vazia nos cenários
+///   anteriores ao M3 (e em JSON antigo).
 /// - `mediaBox`/`cropBox`/`trimBox`/`bleedBox`: caixas gravadas no arquivo, em espaço do usuário
 ///   (`cropBox`/`trimBox`/`bleedBox` nulos = ausentes no arquivo).
 public struct PageTruth: Codable, Sendable {
@@ -40,10 +74,11 @@ public struct PageTruth: Codable, Sendable {
     public let lines: [CGRect]
     public let columns: [CGRect]
     public let isScan: Bool
+    public let blocks: [BlockTruth]
 
     public init(geometry: PageGeometry, mediaBox: CGRect, cropBox: CGRect?, trimBox: CGRect?, bleedBox: CGRect?,
                 inkBox: CGRect?, ignorableInk: [CGRect], headerFooter: [CGRect], lines: [CGRect],
-                columns: [CGRect], isScan: Bool) {
+                columns: [CGRect], isScan: Bool, blocks: [BlockTruth] = []) {
         self.geometry = geometry
         self.mediaBox = mediaBox
         self.cropBox = cropBox
@@ -55,6 +90,24 @@ public struct PageTruth: Codable, Sendable {
         self.lines = lines
         self.columns = columns
         self.isScan = isScan
+        self.blocks = blocks
+    }
+
+    // `blocks` é aditivo: JSON gravado antes do M3 não tem a chave.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        geometry = try c.decode(PageGeometry.self, forKey: .geometry)
+        mediaBox = try c.decode(CGRect.self, forKey: .mediaBox)
+        cropBox = try c.decodeIfPresent(CGRect.self, forKey: .cropBox)
+        trimBox = try c.decodeIfPresent(CGRect.self, forKey: .trimBox)
+        bleedBox = try c.decodeIfPresent(CGRect.self, forKey: .bleedBox)
+        inkBox = try c.decodeIfPresent(CGRect.self, forKey: .inkBox)
+        ignorableInk = try c.decode([CGRect].self, forKey: .ignorableInk)
+        headerFooter = try c.decode([CGRect].self, forKey: .headerFooter)
+        lines = try c.decode([CGRect].self, forKey: .lines)
+        columns = try c.decode([CGRect].self, forKey: .columns)
+        isScan = try c.decode(Bool.self, forKey: .isScan)
+        blocks = try c.decodeIfPresent([BlockTruth].self, forKey: .blocks) ?? []
     }
 }
 
