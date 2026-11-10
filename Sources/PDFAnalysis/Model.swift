@@ -35,6 +35,9 @@ public enum BlockType: String, Codable, Sendable {
     case paragraph, heading, equation, figure, table, caption, note, list, headerFooter, unknown
 }
 
+/// Linha de texto. Em `Block.lines` (M3), `rect` é colado à tinta da linha
+/// (perfil do raster dentro do bloco), não a caixa tipográfica: o fatiamento
+/// corta nos vãos entre linhas e não pode atravessar ascendentes/descendentes.
 public struct Line: Codable, Sendable, Equatable {
     public var rect: CGRect
     public var baseline: CGFloat
@@ -49,11 +52,23 @@ public struct Line: Codable, Sendable, Equatable {
     }
 }
 
+/// Folha do XY-cut (PLAN.md §5.6). Contrato com o LayoutEngine (E3–E6):
+/// - `rect` colado à tinta, em espaço de página;
+/// - blocos de uma página são disjuntos e, juntos, cobrem toda a tinta da
+///   página (fora das `ignoredRegion`): todo pixel de tinta está em exatamente um;
+/// - `lines` em blocos de texto: linhas coladas à tinta, de cima para baixo, cada
+///   tinta do bloco dentro de uma linha; em figura/tabela/equação pode ser vazio
+///   (bloco atômico, nunca fatiado);
+/// - `column`: índice da coluna (0 = mais à esquerda) dentro da seção; `nil` =
+///   largura total (título, resumo, figura larga).
 public struct Block: Codable, Sendable, Equatable {
     public var rect: CGRect
     public var type: BlockType
     public var lines: [Line]
     public var column: Int?
+
+    /// Bloco que nunca pode ser cortado por fatia.
+    public var isAtomic: Bool { [.figure, .table, .equation].contains(type) }
 
     public init(rect: CGRect, type: BlockType, lines: [Line], column: Int? = nil) {
         self.rect = rect
@@ -84,7 +99,8 @@ public struct PageAnalysis: Codable, Sendable, Equatable {
     public var bodyInkBox: CGRect?
     /// Linhas de texto detectadas, de cima para baixo.
     public var lines: [Line]
-    /// Blocos em ordem de leitura (M1 pode deixar vazio; M3 preenche).
+    /// Blocos em ordem de leitura (contrato em `Block`). Vazio = análise sem
+    /// segmentação; consumidores caem para `lines`/`inkBox`.
     public var blocks: [Block]
     /// Altura-x do corpo de texto (moda ponderada), em pontos de origem.
     public var bodyXHeightPt: CGFloat?
