@@ -13,12 +13,18 @@ public struct Placement: Codable, Sendable, Equatable {
     public var transform: CGAffineTransform
     /// Sub-regiões (espaço de página de origem) a mascarar.
     public var hidden: [CGRect]
+    /// Geometria que define o espaço de página de `sourceRect`. O escritor precisa
+    /// dela para voltar ao espaço do usuário: com /Rotate, a conversão depende da
+    /// caixa efetiva, que a análise pode tirar da TrimBox (marcas de corte).
+    public var sourceGeometry: PageGeometry?
 
-    public init(sourcePage: Int, sourceRect: CGRect, transform: CGAffineTransform, hidden: [CGRect] = []) {
+    public init(sourcePage: Int, sourceRect: CGRect, transform: CGAffineTransform, hidden: [CGRect] = [],
+                sourceGeometry: PageGeometry? = nil) {
         self.sourcePage = sourcePage
         self.sourceRect = sourceRect
         self.transform = transform
         self.hidden = hidden
+        self.sourceGeometry = sourceGeometry
     }
 
     /// Fator de escala uniforme da colocação.

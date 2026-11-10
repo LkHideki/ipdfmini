@@ -56,7 +56,9 @@ public struct BoxWriter: PDFWriter {
                 page = copy
                 copies.append(copy)
             }
-            let box = geometry[s]!.toUser(placement.sourceRect)
+            // A geometria do plano manda: a da página lida aqui (Crop∩Media) diverge
+            // quando a análise partiu da TrimBox numa página girada.
+            let box = (placement.sourceGeometry ?? geometry[s]!).toUser(placement.sourceRect)
             Self.setAllBoxes(of: page, to: box)
             ordered.append(page)
             shifts[ObjectIdentifier(page)] = box.origin

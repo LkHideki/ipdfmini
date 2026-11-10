@@ -117,6 +117,34 @@ private func words(_ s: String?) -> [String] {
         #expect(near(link.bounds.minX, 160 - expectedUser.minX, 0.05) && near(link.bounds.minY, 120 - expectedUser.minY, 0.05))
     }
 
+    /// /Rotate 90 com espaço de página definido por uma caixa efetiva menor que
+    /// Crop∩Media (análise que partiu da TrimBox): o escritor usa a geometria do plano.
+    @Test func rotatedPageUsesPlanGeometry() async throws {
+        let env = Env(); defer { env.cleanup() }
+        var p = TestPageSpec()
+        p.crop = CGRect(x: 40, y: 60, width: 500, height: 700)
+        p.rotation = 90
+        p.drawText = false
+        p.marker = CGRect(x: 280, y: 170, width: 120, height: 100)
+        try TestPDF.build(TestDocSpec(pages: [p]), to: env.src)
+
+        // assimétrica: com inset uniforme x0+y0+w coincide e a conversão a 90° não muda
+        let trim = CGRect(x: 40, y: 60, width: 450, height: 700)
+        let g = PageGeometry(effectiveBox: trim, rotation: 90)
+        let w = TestPDF.window(x: 100, y: 80, width: 300)
+        var plan = TestPDF.plan([(0, w)])
+        plan.pages[0].placements[0].sourceGeometry = g
+        _ = try await env.write(plan)
+
+        let expectedUser = g.toUser(w)
+        expectBoxes(env.out, page: 0, size: expectedUser.size)
+        // Marcador em espaço de página (pela geometria do plano) menos a origem da janela.
+        let m = g.toPage(p.marker!)
+        let ink = try #require(TestPDF.inkRect(env.out, page: 0))
+        #expect(near(ink.minX, m.minX - w.minX, 1.5) && near(ink.minY, m.minY - w.minY, 1.5)
+                && near(ink.width, m.width, 1.5) && near(ink.height, m.height, 1.5), "ink \(ink) esperado \(m)")
+    }
+
     /// MediaBox de origem não nula + /Rotate 90. Marcador em (300,300,50,50) do usuário →
     /// espaço de página (350,380,50,50), com x' = 140 + (y - 90) e y' = 730 - x.
     @Test func nonZeroMediaOriginAndRotation() async throws {

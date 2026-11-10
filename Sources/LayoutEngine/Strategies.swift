@@ -42,7 +42,8 @@ public struct PassthroughStrategy: AdaptationStrategy {
             let w = CropMath.passthroughWindow(pageBox: page.pageBox, viewport: profile.sizePt, maxScale: recipe.maxScale)
             return OutputPage(sizePt: profile.sizePt, placements: [
                 Placement(sourcePage: page.index, sourceRect: w.window,
-                          transform: CropMath.transform(window: w.window, scale: w.scale)),
+                          transform: CropMath.transform(window: w.window, scale: w.scale),
+                          sourceGeometry: page.geometry),
             ])
         }
         return EstimateMath.finish(id, doc, profile, recipe, pages: pages, warnings: warnings,
@@ -122,7 +123,8 @@ enum CropPlanner {
             }
             return OutputPage(sizePt: profile.sizePt, placements: [
                 Placement(sourcePage: page.index, sourceRect: w.window,
-                          transform: CropMath.transform(window: w.window, scale: w.scale)),
+                          transform: CropMath.transform(window: w.window, scale: w.scale),
+                          sourceGeometry: page.geometry),
             ])
         }
         return EstimateMath.finish(id, doc, profile, recipe, pages: pages, warnings: warnings,
