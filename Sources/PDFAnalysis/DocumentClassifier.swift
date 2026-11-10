@@ -16,6 +16,7 @@ enum DocumentClassifier {
         if w / h >= 1.2 { return .slides }
 
         let texty = content.filter { $0.analysis.kind == .digitalText || $0.analysis.kind == .mixed }
+        // colunas reais do XY-cut (calha que passou nos critérios da §5.6)
         let twoCol = texty.filter { $0.columns >= 2 }.count
         if !texty.isEmpty && Double(twoCol) >= 0.5 * Double(texty.count) { return .twoColumnArticle }
 

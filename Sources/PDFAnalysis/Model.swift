@@ -141,7 +141,7 @@ public struct PageAnalysis: Codable, Sendable, Equatable {
 }
 
 public struct DocumentAnalysis: Codable, Sendable, Equatable {
-    public static let analyzerVersion = 1
+    public static let analyzerVersion = 2
 
     public var sha256: String
     public var analyzerVersion: Int

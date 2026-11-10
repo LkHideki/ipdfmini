@@ -8,6 +8,7 @@ struct PageWork: Sendable, Equatable {
     var analysis: PageAnalysis
     /// Texto de cada linha, paralelo a `analysis.lines` ("" quando veio do perfil).
     var lineTexts: [String]
+    /// Colunas da segmentação (`columnCount`); base do `twoColumnArticle`.
     var columns: Int
     var imageCoverage: Double
     var samples: [XHeightSample]
@@ -15,7 +16,7 @@ struct PageWork: Sendable, Equatable {
     var inkRows: InkRows? = nil
 }
 
-/// Análise de uma página. PLAN.md §5.1–§5.5.
+/// Análise de uma página. PLAN.md §5.1–§5.6.
 enum PageAnalyzer {
     struct TextLine {
         var text: String
@@ -27,6 +28,8 @@ enum PageAnalyzer {
         /// Topos planos: `xTops` (x, v, w) e `flatTops` (u v w x y z).
         var xTops: [CGRect] = []
         var flatTops: [CGRect] = []
+        /// Palavras: `characterBounds` agrupados entre espaços (espaço do usuário).
+        var words: [CGRect] = []
     }
 
     static let xHeightLetters = Set("acegmnopqrsuvwxyz")
@@ -135,9 +138,11 @@ enum PageAnalyzer {
 
         // §5.5: linhas e altura-x
         var lines: [(line: Line, text: String)] = []
+        var texts: [TextBox] = []   // espaço de página de g0, na ordem do texto extraído
         var samples: [XHeightSample] = []
         let darkness = DarknessMap(raster, background: bg, mask: scanLike ? mask : nil)
-        func measureLine(_ r0: CGRect, text: String, glyph: (xHeight: CGFloat, baseline: CGFloat)? = nil) {
+        func measureLine(_ r0: CGRect, text: String, glyph: (xHeight: CGFloat, baseline: CGFloat)? = nil,
+                         words: [CGRect] = []) {
             let p = map.pixelRect(r0)
             let prof = darkness.rowProfile(x0: p.x0, y0: p.y0, x1: p.x1, y1: p.y1)
             var ink: CGFloat?
@@ -159,6 +164,7 @@ enum PageAnalyzer {
             let rect = toFinal(r0)
             let base = g.toPage(g0.toUser(CGPoint(x: r0.midX, y: baseY))).y
             lines.append((Line(rect: rect, baseline: base, xHeightPt: xh), text))
+            if !text.isEmpty { texts.append(TextBox(rect: r0, text: text, xHeight: xh, baseline: baseY, words: words)) }
         }
         let usable = textLines.enumerated().filter { !excluded.contains($0.offset) }.map(\.element)
         if !usable.isEmpty {
@@ -167,7 +173,7 @@ enum PageAnalyzer {
                 guard !r0.isNull, r0.width > 0.5, r0.height > 0.5 else { continue }
                 // texto vertical não tem linha de base horizontal: fica na tinta, fora das linhas
                 if r0.height > 1.5 * r0.width && l.text.count >= 3 { continue }
-                measureLine(r0, text: l.text, glyph: glyphXHeight(l, g0))
+                measureLine(r0, text: l.text, glyph: glyphXHeight(l, g0), words: l.words.map(g0.toPage))
             }
         } else if let b = inkPx {
             for band in ProfileLines.bands(rows: rows, from: b.y0, to: b.y1, k: k) {
@@ -198,13 +204,34 @@ enum PageAnalyzer {
         else if hasVisibleText && imageCoverage < mixedImageCoverage { kind = .digitalText }
         else { kind = .mixed }   // texto + imagens grandes, ou só vetor/imagem parcial
 
-        let columns = inkPx.map { countColumns(cols: cols, box: $0, s: s) } ?? 0
         let inkRows = inkPx.map { _ in
             InkRows(mask: mask, rows: rows, k: k, mapping: map, g0: g0, g: g, clip: effectivePage0)
         }
         let modes = XHeightStats.modes(samples)
+
+        // §5.6: XY-cut sobre a mesma máscara. Raiz = caixa de tinta: em scan, o
+        // salpico fora dela (linhas com < k pixels) não conta como tinta, como na caixa.
+        var blocks: [Block] = []
+        if let b = inkPx {
+            var seg = Segmenter(mask: mask, map: map, darkness: darkness, texts: texts,
+                                images: content.imageRects.map(g0.toPage), isScan: scanLike, bodyXHeight: modes?.body)
+            func clipFinal(_ r: CGRect) -> CGRect? {
+                let c = r.intersection(effectivePage0)
+                return c.isNull || c.isEmpty ? nil : toFinal(c)
+            }
+            for blk in seg.run(root: PixelBox(x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1)) {
+                guard let rect = clipFinal(blk.rect) else { continue }
+                let ls = blk.lines.compactMap { l -> Line? in
+                    guard let r = clipFinal(l.rect) else { return nil }
+                    let base = g.toPage(g0.toUser(CGPoint(x: l.rect.midX, y: l.baseline))).y
+                    return Line(rect: r, baseline: base, xHeightPt: l.xHeightPt, words: l.words.compactMap(clipFinal))
+                }
+                blocks.append(Block(rect: rect, type: blk.type, lines: ls, column: blk.column))
+            }
+        }
+        let columns = columnCount(blocks)
         let analysis = PageAnalysis(index: index, boxes: boxes, geometry: g, kind: kind,
-                                    inkBox: inkPage0.map(toFinal), lines: lines.map(\.line), blocks: [],
+                                    inkBox: inkPage0.map(toFinal), lines: lines.map(\.line), blocks: blocks,
                                     bodyXHeightPt: modes?.body, smallestXHeightPt: modes?.smallest,
                                     warnings: warnings)
         return PageWork(analysis: analysis, lineTexts: lines.map(\.text), columns: columns,
@@ -244,18 +271,25 @@ enum PageAnalyzer {
             let ns = raw as NSString
             // índice de characterBounds pode divergir do texto: caixa fora da linha é descartada
             let guardRect = r.insetBy(dx: -2, dy: -2)
+            var word = CGRect.null
             for i in 0..<min(ns.length, range.length) {
                 guard let u = Unicode.Scalar(ns.character(at: i)) else { continue }
                 let c = Character(u)
-                let isX = xHeightLetters.contains(c), isFlat = flatBottomLetters.contains(c)
-                guard isX || isFlat else { continue }
+                if c.isWhitespace {
+                    if !word.isNull { line.words.append(word); word = .null }
+                    continue
+                }
                 let b = page.characterBounds(at: base + i).standardized
                 guard !b.isEmpty, guardRect.contains(b) else { continue }
+                word = word.union(b)
+                let isX = xHeightLetters.contains(c), isFlat = flatBottomLetters.contains(c)
+                guard isX || isFlat else { continue }
                 if isX { line.xLetters.append(b) }
                 if isFlat { line.flatBottoms.append(b) }
                 if flatTopLetters.contains(c) { line.flatTops.append(b) }
                 if xTopLetters.contains(c) { line.xTops.append(b) }
             }
+            if !word.isNull { line.words.append(word) }
             return line
         }
     }
@@ -277,20 +311,14 @@ enum PageAnalyzer {
         return (xh, g0.toPage(CGPoint(x: l.userRect.midX, y: base)).y)
     }
 
-    /// Colunas por vale vertical simples (M1); o XY-cut do M3 substitui.
-    /// Vale: ≥ 8 pt de largura, quase sem tinta (≤ 5% da altura, tolera título
-    /// e cabeçalho atravessando a calha), no miolo da caixa de tinta.
-    static func countColumns(cols: [Float], box: (x0: Int, y0: Int, x1: Int, y1: Int), s: CGFloat) -> Int {
-        let w = box.x1 - box.x0, h = box.y1 - box.y0
-        guard w > 0, h > 0 else { return 0 }
-        let limit = Float(0.05 * Double(h))
-        let minGap = Int((8 * s).rounded())
-        let lo = box.x0 + Int(0.15 * Double(w)), hi = box.x1 - Int(0.15 * Double(w))
-        var valleys = 0, run = 0
-        for x in lo..<max(lo, hi) {
-            if cols[x] <= limit { run += 1 } else { if run >= minGap { valleys += 1 }; run = 0 }
-        }
-        if run >= minGap { valleys += 1 }
-        return valleys + 1
+    /// Colunas da seção dominante: blocos com `column` ocupando ≥ 40% da área
+    /// dos blocos; senão 1 (figura larga ou coluna única). 0 = sem tinta.
+    static func columnCount(_ blocks: [Block]) -> Int {
+        guard !blocks.isEmpty else { return 0 }
+        let area = { (b: Block) in b.rect.width * b.rect.height }
+        let total = blocks.reduce(0) { $0 + area($1) }
+        let inColumns = blocks.filter { $0.column != nil }
+        guard total > 0, inColumns.reduce(0, { $0 + area($1) }) >= 0.4 * total else { return 1 }
+        return (inColumns.compactMap(\.column).max() ?? 0) + 1
     }
 }

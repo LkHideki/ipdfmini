@@ -81,6 +81,12 @@ enum TestPDF {
     }
 }
 
+private final class FontCache: @unchecked Sendable {
+    let lock = NSLock()
+    var fonts: [String: CTFont] = [:]
+}
+private let fontCache = FontCache()
+
 enum Ink {
     static let pool = [
         "the quick brown fox jumps over the lazy dog and runs away",
@@ -93,8 +99,23 @@ enum Ink {
         "small notes at the bottom of the page use a smaller size",
     ]
 
+    /// CTFont criado uma vez por (nome, corpo), sob lock: criação concorrente
+    /// sem cache pode travar o CoreText (SPIKES.md, S3), e os testes rodam em paralelo.
     static func font(_ size: CGFloat, name: String = "Times New Roman") -> CTFont {
-        CTFontCreateWithName(name as CFString, size, nil)
+        fontCache.lock.lock()
+        defer { fontCache.lock.unlock() }
+        let key = "\(name)|\(size)"
+        if let f = fontCache.fonts[key] { return f }
+        let f = CTFontCreateWithName(name as CFString, size, nil)
+        fontCache.fonts[key] = f
+        return f
+    }
+
+    /// Avanço tipográfico da linha (para centrar e alinhar à direita).
+    static func width(_ s: String, size: CGFloat, font name: String = "Times New Roman") -> CGFloat {
+        let attrs: [NSAttributedString.Key: Any] = [NSAttributedString.Key(kCTFontAttributeName as String): font(size, name: name)]
+        let line = CTLineCreateWithAttributedString(NSAttributedString(string: s, attributes: attrs))
+        return CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
     }
 
     static func xHeight(_ size: CGFloat, name: String = "Times New Roman") -> CGFloat {

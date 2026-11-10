@@ -2,8 +2,8 @@ import CoreGraphics
 import Foundation
 
 /// Cabeçalho/rodapé repetido e número de página. PLAN.md §5.4.
-/// Só registra como `Block(type: .headerFooter)`; a caixa de tinta continua
-/// com eles (remover é a estratégia E2).
+/// Só reclassifica blocos da segmentação como `.headerFooter`; a caixa de
+/// tinta continua com eles (remover é a estratégia E2).
 enum HeaderFooter {
     /// Faixa externa (fração da altura) onde se procuram candidatos.
     static let band: CGFloat = 0.15
@@ -52,10 +52,59 @@ enum HeaderFooter {
         }
         for pi in pages.indices {
             let lines = pages[pi].analysis.lines
-            let blocks = lines.indices.filter { marked.contains([pi, $0]) }
-                .map { Block(rect: lines[$0].rect, type: .headerFooter, lines: [lines[$0]]) }
-            pages[pi].analysis.blocks.append(contentsOf: blocks)
+            let rects = lines.indices.filter { marked.contains([pi, $0]) }.map { lines[$0].rect }
+            guard !rects.isEmpty else { continue }
+            pages[pi].analysis.blocks = mark(rects, in: pages[pi].analysis.blocks)
         }
+    }
+
+    /// Reclassifica como `.headerFooter` as linhas (coladas à tinta) dos blocos
+    /// que casam com as linhas tipográficas marcadas. Bloco inteiro muda de tipo;
+    /// linhas no começo ou no fim de um bloco maior viram bloco próprio, pela
+    /// união das linhas: segue disjunto e cobrindo a mesma tinta. Linha no meio
+    /// do bloco fica (na dúvida, não remove).
+    static func mark(_ marked: [CGRect], in blocks: [Block]) -> [Block] {
+        func hits(_ l: CGRect, _ m: CGRect) -> Bool {
+            let v = min(l.maxY, m.maxY) - max(l.minY, m.minY)
+            let h = min(l.maxX, m.maxX) - max(l.minX, m.minX)
+            return h > 0 && v >= 0.5 * min(l.height, m.height)
+        }
+        var out: [Block] = []
+        for b in blocks {
+            guard b.type != .headerFooter else { out.append(b); continue }
+            guard !b.lines.isEmpty else {
+                // bloco atômico sem linhas: só muda de tipo se cabe na linha marcada
+                if marked.contains(where: { $0.insetBy(dx: -2, dy: -2).contains(b.rect) }) {
+                    out.append(Block(rect: b.rect, type: .headerFooter, lines: [], column: nil))
+                } else { out.append(b) }
+                continue
+            }
+            let flags = b.lines.map { l in marked.contains { hits(l.rect, $0) } }
+            guard flags.contains(true) else { out.append(b); continue }
+            if !flags.contains(false) {
+                out.append(Block(rect: b.rect, type: .headerFooter, lines: b.lines, column: nil))
+                continue
+            }
+            let head = flags.prefix { $0 }.count, tail = flags.reversed().prefix { $0 }.count
+            guard head > 0 || tail > 0 else { out.append(b); continue }
+            func sub(_ r: Range<Int>, _ type: BlockType, _ column: Int?) -> Block {
+                let ls = Array(b.lines[r])
+                let rect = ls.dropFirst().reduce(ls[0].rect) { $0.union($1.rect) }
+                return Block(rect: rect, type: type, lines: ls, column: column)
+            }
+            let n = b.lines.count
+            if head > 0 { out.append(sub(0..<head, .headerFooter, nil)) }
+            out.append(sub(head..<(n - tail), b.type, b.column))
+            if tail > 0 { out.append(sub((n - tail)..<n, .headerFooter, nil)) }
+        }
+        // ordem de leitura: cabeçalho acima de tudo primeiro, rodapé abaixo de tudo por último
+        // (o XY-cut pode tê-los posto numa coluna quando não atravessam a calha)
+        let body = out.filter { $0.type != .headerFooter }
+        guard let top = body.map(\.rect.maxY).max(), let bottom = body.map(\.rect.minY).min() else { return out }
+        let heads = out.filter { $0.type == .headerFooter && $0.rect.minY >= top }
+        let feet = out.filter { $0.type == .headerFooter && $0.rect.maxY <= bottom && $0.rect.minY < top }
+        let middle = out.filter { b in !heads.contains(b) && !feet.contains(b) }
+        return heads + middle + feet
     }
 
     /// Texto módulo dígitos: "Página 12" e "Página 13" viram a mesma chave.

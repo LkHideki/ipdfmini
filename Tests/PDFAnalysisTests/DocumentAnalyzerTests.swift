@@ -214,7 +214,8 @@ private func printerPage(marks: Bool, truth: inout CGRect) -> PageSpec {
         }
     }
     let doc = try await analyze(TestPDF.make(pages))
-    for p in doc.pages { #expect(p.blocks.isEmpty) }
+    // M3: `blocks` agora sempre traz a segmentação; o que importa é nenhum ser cabeçalho/rodapé
+    for p in doc.pages { #expect(!p.blocks.isEmpty && !p.blocks.contains { $0.type == .headerFooter }) }
 }
 
 // MARK: métricas de texto (§5.5)
@@ -342,20 +343,23 @@ func bodyXHeightWithinFivePercent(size: CGFloat) async throws {
     }
 }
 
-@Test func digitalPageBudget() async throws {
-    let a4 = CGRect(x: 0, y: 0, width: 595.28, height: 841.89)
-    let n = 10
-    let data = TestPDF.make((0..<n).map { i in
-        PageSpec(media: a4) { ctx in
-            Ink.paragraph(lines: 55, size: 10, leading: 13, x: 72, top: 780, seed: i, in: ctx)
-        }
-    })
-    _ = try await analyze(data, concurrency: 1)   // aquece fontes e caches do PDFKit
-    let clock = ContinuousClock()
-    let t = try await clock.measure { _ = try await analyze(data, concurrency: 1) }
-    let ms = Double(t.components.attoseconds) / 1e15 + Double(t.components.seconds) * 1000
-    let perPage = ms / Double(n)
-    print("PDFAnalysis: \(String(format: "%.1f", perPage)) ms por página digital A4 (serial, \(n) páginas)")
-    // teto folgado para build de debug; o orçamento do §16 é 40 ms em release
-    #expect(perPage < 150)
+// Na suíte serializada da segmentação: sem disputa de CPU com o corpus.
+extension SerialAnalysisTests {
+    @Test func digitalPageBudget() async throws {
+        let a4 = CGRect(x: 0, y: 0, width: 595.28, height: 841.89)
+        let n = 10
+        let data = TestPDF.make((0..<n).map { i in
+            PageSpec(media: a4) { ctx in
+                Ink.paragraph(lines: 55, size: 10, leading: 13, x: 72, top: 780, seed: i, in: ctx)
+            }
+        })
+        _ = try await analyze(data, concurrency: 1)   // aquece fontes e caches do PDFKit
+        let clock = ContinuousClock()
+        let t = try await clock.measure { _ = try await analyze(data, concurrency: 1) }
+        let ms = Double(t.components.attoseconds) / 1e15 + Double(t.components.seconds) * 1000
+        let perPage = ms / Double(n)
+        print("PDFAnalysis: \(String(format: "%.1f", perPage)) ms por página digital A4 (serial, \(n) páginas)")
+        // teto folgado para build de debug; o orçamento do §16 é 40 ms em release
+        #expect(perPage < 150)
+    }
 }
