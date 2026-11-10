@@ -70,7 +70,7 @@ struct InspectorView: View {
 
     private func candidateRow(_ c: CandidateSummary, chosen: Bool) -> some View {
         Button {
-            if let m = Labels.mode(forcing: c.strategy) { item.settings.mode = m }
+            if let s = item.settings.forcing(c) { item.settings = s }
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: chosen ? "checkmark.circle.fill" : "circle")

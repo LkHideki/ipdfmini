@@ -167,11 +167,13 @@ public enum Labels {
         }
     }
 
-    /// "Recorte: 9,4 pt, 1 tela" (§8), com o nome de modo da interface.
+    /// "Recorte · retrato: 9,4 pt, 1 tela" (§8), com o nome de modo da interface. A
+    /// orientação distingue a mesma estratégia no perfil escolhido e no girado.
     public static func candidate(_ c: CandidateSummary) -> String {
         let body = c.bodyPointSizeEquivalent.map { "\(Describe.number($0)) pt" } ?? "? pt"
         let screens = Describe.number(c.screensPerSourcePage)
-        return "\(strategy(c.strategy)): \(body), \(screens) \(c.screensPerSourcePage == 1 ? "tela" : "telas")"
+        let o = c.orientation == .portrait ? "retrato" : "paisagem"
+        return "\(strategy(c.strategy)) · \(o): \(body), \(screens) \(c.screensPerSourcePage == 1 ? "tela" : "telas")"
     }
 
     public static func invariantStatus(_ s: InvariantStatus) -> String {

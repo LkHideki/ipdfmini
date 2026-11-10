@@ -83,11 +83,12 @@ public struct CandidateSummary: Codable, Sendable, Equatable {
         risks = e.risks
     }
 
-    /// "Recorte: 9,4 pt, 1 tela" (§8).
+    /// "Recorte · retrato: 9,4 pt, 1 tela" (§8); a orientação separa o perfil do girado.
     public var line: String {
         let body = bodyPointSizeEquivalent.map { "\(Describe.number($0)) pt" } ?? "? pt"
         let screens = Describe.number(screensPerSourcePage)
-        return "\(strategy.displayName): \(body), \(screens) \(screensPerSourcePage == 1 ? "tela" : "telas")"
+        let o = orientation == .portrait ? "retrato" : "paisagem"
+        return "\(strategy.displayName) · \(o): \(body), \(screens) \(screensPerSourcePage == 1 ? "tela" : "telas")"
     }
 }
 
@@ -215,7 +216,8 @@ public enum Describe {
     public static func writeWarning(_ w: WriteWarning) -> String {
         switch w {
         case let .aspectMismatch(page, err): "saída p. \(page + 1): proporção fora do viewport (\(number(err * 100, decimals: 3))%)"
-        case .sizeBudgetExceeded(let r): "arquivo \(number(r, decimals: 2))× a origem (meta ≤ 1,1×)"
+        case let .sizeBudgetExceeded(r, budget):
+            "arquivo \(number(r, decimals: 2))× a origem" + (budget.map { " (meta ≤ \(number($0))×)" } ?? "")
         case .overlaysIgnored(let n): "\(n) sobreposições ignoradas pelo BoxWriter"
         case .producerNotApplied: "campo Producer não gravado (xref não clássica)"
         }

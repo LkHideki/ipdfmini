@@ -37,6 +37,17 @@ public struct ConversionSettings: Codable, Sendable, Equatable {
          "--class-mode", classMode.rawValue]
     }
 
+    /// Ajustes que reproduzem um candidato da tabela (clique): força a estratégia e, se o
+    /// candidato estiver no perfil girado e ele for embutido, troca o perfil (o modo forçado
+    /// prefere o perfil escolhido, então só o modo não bastaria). `nil` se não há modo.
+    public func forcing(_ c: CandidateSummary) -> ConversionSettings? {
+        guard let m = Labels.mode(forcing: c.strategy) else { return nil }
+        var s = self
+        s.mode = m
+        if c.profileID != profileID, ViewportProfile.named(c.profileID) != nil { s.profileID = c.profileID }
+        return s
+    }
+
     /// Perfil girado 90° entre os embutidos (botão de rotação do modo "Mini").
     public var rotatedProfileID: String? { ViewportProfile.named(profile.rotated.id)?.id }
 }

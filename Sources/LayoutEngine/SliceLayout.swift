@@ -85,6 +85,21 @@ struct SliceRecord: Sendable {
     var hasAtomic: Bool
     var isBody: Bool
     var reduced: Bool
+    /// Tem linha de texto do tamanho do corpo (`BodyText.band`), mesmo fora do fluxo
+    /// principal: resumo de largura total reduzido no E5 também é corpo para o aviso.
+    var bodySized: Bool = false
+}
+
+/// Texto do tamanho do corpo: altura-x da linha / altura-x do corpo dentro da faixa.
+/// Títulos ficam acima, notas abaixo. O validador (inv. 2) usa a mesma faixa.
+public enum BodyText {
+    public static let band: ClosedRange<CGFloat> = 0.85...1.15
+
+    /// Altura-x desconhecida (≤ 0) conta como corpo: melhor avisar demais.
+    public static func isBodySized(_ lineXHeight: CGFloat, body: CGFloat?) -> Bool {
+        guard let body, body > 0, lineXHeight > 0 else { return true }
+        return band.contains(lineXHeight / body)
+    }
 }
 
 struct SliceResult: Sendable {
@@ -107,7 +122,7 @@ enum SliceLayoutEngine {
         var result = SliceResult()
         for (pos, page) in doc.pages.enumerated() {
             let segs = segments(pos).filter { !$0.units.isEmpty }
-            var composer = PageComposer(page: page, geometry: g)
+            var composer = PageComposer(page: page, geometry: g, bodyXHeight: EstimateMath.bodyXHeightPt(doc))
             for (k, seg) in segs.enumerated() { composer.add(seg, final: k == segs.count - 1) }
             composer.flush()
             var outs = composer.done
@@ -144,6 +159,7 @@ enum SliceLayoutEngine {
 struct PageComposer {
     let page: PageAnalysis
     let g: SliceGeometry
+    let bodyXHeight: CGFloat?
     var done: [(placements: [Placement], overlays: [Overlay])] = []
     var cur: [Placement] = []
     var curOverlays: [Overlay] = []
@@ -155,9 +171,20 @@ struct PageComposer {
     var overlapPages = 0
     var reducedSections = 0
 
-    init(page: PageAnalysis, geometry: SliceGeometry) {
+    init(page: PageAnalysis, geometry: SliceGeometry, bodyXHeight: CGFloat? = nil) {
         self.page = page
         g = geometry
+        self.bodyXHeight = bodyXHeight
+    }
+
+    func isBodySized(_ u: SliceUnit) -> Bool {
+        switch u.kind {
+        case .atomic: return false
+        case .section: return true
+        case let .line(b, l, _, _):
+            guard page.blocks.indices.contains(b), page.blocks[b].lines.indices.contains(l) else { return true }
+            return BodyText.isBodySized(page.blocks[b].lines[l].xHeightPt, body: bodyXHeight)
+        }
     }
 
     mutating func flush() {
@@ -175,7 +202,8 @@ struct PageComposer {
         cur.append(Placement(sourcePage: page.index, sourceRect: src, transform: t, sourceGeometry: page.geometry))
         cursor = top - src.height * s
         records.append(SliceRecord(scale: s, textLines: units.reduce(0) { $0 + $1.textLines },
-                                   hasAtomic: units.contains { $0.isAtomic }, isBody: isBody, reduced: reduced))
+                                   hasAtomic: units.contains { $0.isAtomic }, isBody: isBody, reduced: reduced,
+                                   bodySized: units.contains(where: isBodySized)))
     }
 
     mutating func add(_ seg: SliceSegment, final: Bool) {

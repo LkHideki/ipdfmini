@@ -19,7 +19,8 @@ import Testing
         let settings = ConversionSettings()
         let report = try await client.plan(input: pdf, settings: settings)
         #expect(report.analysis.pageCount == 12)
-        #expect(report.plan.pages.count == 12)
+        // Auto do M3 (E0–E5 × orientação): fatias podem dar mais de uma tela por página.
+        #expect(report.plan.pages.count >= 12)
         #expect(!report.candidates.isEmpty)
         // Replanejar a análise decodificada dá o mesmo plano que a CLI: a pré-visualização não mente.
         let again = try Replanner.replan(report.analysis, settings)
@@ -150,7 +151,9 @@ import Testing
         for s in [ConversionSettings(),
                   ConversionSettings(profileID: "books.landscape.fullscreen", mode: .crop, marginMM: 3.5, classMode: .all),
                   ConversionSettings(profileID: "safearea.portrait", mode: .aggressiveCrop, marginMM: 0, classMode: .bySize),
-                  ConversionSettings(mode: .passthrough, marginMM: 10)] {
+                  ConversionSettings(mode: .passthrough, marginMM: 10),
+                  ConversionSettings(mode: .landscapeSlices), ConversionSettings(mode: .portraitSlices, marginMM: 1),
+                  ConversionSettings(profileID: "fullscreen.landscape", mode: .columns, classMode: .all)] {
             let c = try #require(try IPDFMini.parseAsRoot(["plan", "x.pdf"] + s.cliArguments) as? ipdfmini_cli.Plan)
             #expect(try c.conversion.options() == s.options, "\(s)")
         }
@@ -234,6 +237,32 @@ import Testing
         #expect(Labels.mode(forcing: .crop) == .crop)
         #expect(Labels.mode(forcing: .aggressiveCrop) == .aggressiveCrop)
         #expect(Labels.strategy(for: .auto) == nil)
+        // E3–E5: nome da estratégia, força a própria estratégia e volta pelo clique.
+        for (m, s) in [(ConversionMode.landscapeSlices, StrategyID.landscapeSlices), (.portraitSlices, .portraitSlices),
+                       (.columns, .columns)] {
+            #expect(Labels.strategy(for: m) == s)
+            #expect(Labels.mode(forcing: s) == m)
+            #expect(Labels.mode(m) == s.displayName)
+        }
+        #expect(Array(Labels.modes.prefix(4)) == [.auto, .crop, .aggressiveCrop, .passthrough])
+    }
+
+    @Test func candidateClickForcesStrategyAndOrientation() throws {
+        func summary(_ s: StrategyID, _ p: ViewportProfile) -> CandidateSummary {
+            CandidateSummary(Candidate(profile: p, estimate: Estimate(strategy: s, orientation: p.orientation, bodyXHeightMM: 1.6,
+                                                                      smallestXHeightMM: 1.6, screensPerSourcePage: 2,
+                                                                      fidelityCost: s.fidelityCost)),
+                             legibility: .standard)
+        }
+        let base = ConversionSettings()
+        let e3 = try #require(base.forcing(summary(.landscapeSlices, .booksPortrait.rotated)))
+        #expect(e3.mode == .landscapeSlices && e3.profileID == "books.landscape.fullscreen")
+        let e5 = try #require(base.forcing(summary(.columns, .booksPortrait)))
+        #expect(e5.mode == .columns && e5.profileID == base.profileID)
+        // Girado fora dos embutidos: só o modo muda.
+        let safe = ConversionSettings(profileID: "safearea.portrait")
+        #expect(try #require(safe.forcing(summary(.crop, safe.profile.rotated))).profileID == "safearea.portrait")
+        #expect(Labels.candidate(summary(.columns, .booksPortrait)) == "Colunas · retrato: 9,6 pt, 2 telas")
     }
 
     @Test func rotationSwitchesBetweenBuiltInProfiles() {
@@ -259,15 +288,21 @@ import Testing
         let r = try await Converter().plan(input: pdf, options: ConversionSettings().options)
         let doc = try #require(PDFDocument(url: pdf))
         let img = try #require(PlanRenderer.renderOutputPage(0, plan: r.plan, analysis: r.analysis, document: doc, pixelsPerPoint: 1))
-        #expect(img.width == Int(MiniPage.fullPortrait.width.rounded(.up)))
-        #expect(img.height == Int(MiniPage.fullPortrait.height.rounded(.up)))
+        // Tamanho da página de saída do plano (no M3 o auto pode escolher o perfil girado).
+        let size = r.plan.pages[0].sizePt
+        #expect(size == MiniPage.fullPortrait || size == MiniPage.fullLandscape)
+        #expect(img.width == Int(size.width.rounded(.up)))
+        #expect(img.height == Int(size.height.rounded(.up)))
         #expect(darkFraction(img) > 0.005)   // tem texto
 
         let src = try #require(PlanRenderer.renderSourcePage(0, plan: r.plan, analysis: r.analysis, document: doc,
                                                              highlight: 0, pixelsPerPoint: 1))
         let canvas = try #require(PlanRenderer.sourceCanvas(0, plan: r.plan, analysis: r.analysis))
         #expect(src.width == Int(canvas.width.rounded(.up)))
-        #expect(PlanRenderer.windows(0, plan: r.plan).map(\.output) == [0])
+        // Uma janela por colocação que sai da página 0 (fatias: várias, em páginas de saída seguidas).
+        let fromFirst = r.plan.pages.indices.filter { j in r.plan.pages[j].placements.contains { $0.sourcePage == 0 } }
+        #expect(!fromFirst.isEmpty && fromFirst.first == 0)
+        #expect(PlanRenderer.windows(0, plan: r.plan).map(\.output) == fromFirst)
     }
 
     private func darkFraction(_ img: CGImage) -> Double {

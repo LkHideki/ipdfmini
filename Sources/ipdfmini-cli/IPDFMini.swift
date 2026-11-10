@@ -17,7 +17,27 @@ struct IPDFMini: AsyncParsableCommand {
         subcommands: [Analyze.self, Plan.self, Convert.self, Calibrate.self, CorpusCommand.self])
 }
 
-extension ConversionMode: ExpressibleByArgument {}
+extension ConversionMode: ExpressibleByArgument {
+    /// Nomes aceitos em `--mode` (sem distinção de maiúsculas): valor bruto, nome curto
+    /// em português e em inglês e o id da estratégia.
+    static let argumentNames: [(names: [String], mode: ConversionMode)] = [
+        (["auto", "automatico", "automático"], .auto),
+        (["crop", "recorte", "e1"], .crop),
+        (["aggressive", "agressivo", "e2"], .aggressiveCrop),
+        (["passthrough", "direta", "passagem", "e0"], .passthrough),
+        (["landscape", "paisagem", "landscapeslices", "e3"], .landscapeSlices),
+        (["portrait", "retrato", "portraitslices", "e4"], .portraitSlices),
+        (["columns", "colunas", "e5"], .columns),
+    ]
+
+    public init?(argument: String) {
+        let a = argument.lowercased()
+        guard let m = Self.argumentNames.first(where: { $0.names.contains(a) })?.mode else { return nil }
+        self = m
+    }
+
+    public static var allValueStrings: [String] { argumentNames.map { $0.names[0] } }
+}
 extension PageClassMode: ExpressibleByArgument {}
 extension Orientation: ExpressibleByArgument {}
 
@@ -86,7 +106,9 @@ struct ConversionArguments: ParsableArguments {
     @Option(help: ArgumentHelp("Perfil de viewport.", valueName: "id"))
     var profile: String = ViewportProfile.booksPortrait.id
 
-    @Option(help: "Estratégia: auto (motor de decisão), crop (E1), aggressive (E2, sem cabeçalho/rodapé) ou passthrough (E0).")
+    @Option(help: ArgumentHelp(
+        "Estratégia: auto (motor de decisão), passthrough|direta (E0), crop|recorte (E1), aggressive|agressivo (E2, sem cabeçalho/rodapé), landscape|paisagem (E3, fatias em paisagem), portrait|retrato (E4, fatias em retrato) ou columns|colunas (E5). Aceita também E0–E5.",
+        valueName: "modo"))
     var mode: ConversionMode = .auto
 
     @Flag(name: .customLong("remove-headers"), help: "Deixa o modo auto remover cabeçalho, rodapé e número de página (E2).")
@@ -235,7 +257,7 @@ enum Text {
     }
 
     static func planLines(_ plan: LayoutPlan) -> [String] {
-        let scales = Set(plan.pages.compactMap { $0.placements.first.map { (Double($0.scale) * 1000).rounded() / 1000 } }).sorted()
+        let scales = Set(plan.pages.flatMap { $0.placements.map { (Double($0.scale) * 1000).rounded() / 1000 } }).sorted()
         var out = ["Plano: \(plan.pages.count) páginas de saída de \(Describe.size(plan.profile.sizePt)); escalas "
                    + scales.map { Describe.number($0, decimals: 3) }.joined(separator: ", ")]
         out += plan.warnings.map { "  aviso: " + Describe.planWarning($0) }

@@ -77,7 +77,7 @@ public struct PlacementWriter: PDFWriter {
         let sourceBytes = BoxWriter.fileSize(source.url)
         if sourceBytes > 0 {
             let ratio = Double(bytes) / Double(sourceBytes)
-            if ratio > sizeBudget { warnings.append(.sizeBudgetExceeded(ratio: ratio)) }
+            if ratio > sizeBudget { warnings.append(.sizeBudgetExceeded(ratio: ratio, budget: sizeBudget)) }
         }
         let report = WriteReport(outputPageCount: plan.pages.count, bytes: bytes, warnings: warnings)
         return PlacementWriteResult(report: report, mapping: mapping, remap: stats)

@@ -66,15 +66,15 @@ actor ConversionCache {
     private var tasks: [String: Task<Converted, Error>] = [:]
     private var analyses: [Scenario: Task<DocumentAnalysis, Error>] = [:]
 
-    /// `removeHeaders`: `ConversionOptions.removeHeaderFooter` (modo auto).
-    func converted(_ s: Scenario, removeHeaders: Bool = false) async throws -> Converted {
-        let key = "\(s.rawValue)|\(removeHeaders)"
+    /// `removeHeaders`: `ConversionOptions.removeHeaderFooter`; `mode`: modo forçado (padrão auto).
+    func converted(_ s: Scenario, removeHeaders: Bool = false, mode: ConversionMode = .auto) async throws -> Converted {
+        let key = "\(s.rawValue)|\(removeHeaders)|\(mode.rawValue)"
         if let t = tasks[key] { return try await t.value }
         let t = Task {
             let src = try TestFiles.source(s)
-            let out = TestFiles.url("\(s.rawValue).\(removeHeaders ? "e2" : "mini").pdf")
+            let out = TestFiles.url("\(s.rawValue).\(removeHeaders ? "e2" : "mini").\(mode.rawValue).pdf")
             let report = try await Converter().convert(input: src, output: out,
-                                                       options: ConversionOptions(removeHeaderFooter: removeHeaders))
+                                                       options: ConversionOptions(mode: mode, removeHeaderFooter: removeHeaders))
             return Converted(scenario: s, truth: CorpusCache.doc(s).truth, report: report, source: src, output: out)
         }
         tasks[key] = t

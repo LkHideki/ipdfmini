@@ -1,4 +1,6 @@
 import ArgumentParser
+import MiniKit
+import PDFWriting
 import Foundation
 import PDFKit
 import SyntheticCorpus
@@ -53,6 +55,46 @@ import Testing
         #expect(c.conversion.mode == .aggressiveCrop)
         #expect(c.conversion.removeHeaders)
         #expect(try c.conversion.options().removeHeaderFooter)
+    }
+
+    @Test func sliceModesAcceptPortugueseEnglishAndStrategyNames() throws {
+        let cases: [(String, ConversionMode)] = [
+            ("landscape", .landscapeSlices), ("paisagem", .landscapeSlices), ("E3", .landscapeSlices),
+            ("landscapeSlices", .landscapeSlices), ("portrait", .portraitSlices), ("retrato", .portraitSlices),
+            ("e4", .portraitSlices), ("portraitSlices", .portraitSlices), ("columns", .columns), ("Colunas", .columns),
+            ("E5", .columns), ("recorte", .crop), ("agressivo", .aggressiveCrop), ("direta", .passthrough),
+            ("E0", .passthrough), ("automático", .auto),
+        ]
+        for (arg, mode) in cases {
+            let c = try #require(try IPDFMini.parseAsRoot(["plan", "x.pdf", "--mode", arg]) as? Plan)
+            #expect(c.conversion.mode == mode, "\(arg)")
+        }
+        // Valor bruto de todo modo (o app passa `rawValue` à CLI).
+        for m in ConversionMode.allCases { #expect(ConversionMode(argument: m.rawValue) == m) }
+        #expect(throws: (any Error).self) { try IPDFMini.parseAsRoot(["plan", "x.pdf", "--mode", "E6"]) }
+        let help = IPDFMini.helpMessage(for: Plan.self)
+        for word in ["landscape", "paisagem", "portrait", "retrato", "columns", "colunas", "E3", "E4", "E5"] {
+            #expect(help.contains(word), "help sem \(word)")
+        }
+    }
+
+    @Test func convertWithColumnsModeExitsZero() async throws {
+        let src = try TestFiles.source(.arxivTwoColumn)
+        let out = TestFiles.url("cli.arxiv.e5.pdf")
+        try await run(["convert", src.path, "-o", out.path, "--mode", "colunas"])
+        #expect(try #require(PDFDocument(url: out)).pageCount > CorpusCache.doc(.arxivTwoColumn).truth.pages.count)
+    }
+
+    @Test func reportsStayDecodable() throws {
+        // Aviso de tamanho gravado antes do campo `budget` (relatório JSON antigo).
+        let old = try JSONDecoder().decode(WriteWarning.self, from: Data(#"{"sizeBudgetExceeded":{"ratio":1.2}}"#.utf8))
+        #expect(old == .sizeBudgetExceeded(ratio: 1.2))
+        #expect(Describe.writeWarning(old) == "arquivo 1,2× a origem")
+        #expect(Describe.writeWarning(.sizeBudgetExceeded(ratio: 1.42, budget: 1.3)) == "arquivo 1,42× a origem (meta ≤ 1,3×)")
+        // Modos novos no JSON da CLI e de volta.
+        for m in ConversionMode.allCases {
+            #expect(try JSONDecoder().decode(ConversionMode.self, from: JSONEncoder().encode(m)) == m)
+        }
     }
 
     @Test func modeAndClassArgumentsParse() throws {

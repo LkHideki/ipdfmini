@@ -70,6 +70,8 @@ public enum ValidatorError: Error, Equatable, Sendable {
 ///
 /// Toda medida de tinta usa o raster da análise (`GrayRaster`/`InkMask`, 2 px/pt,
 /// mesmo limiar), para "tinta" significar a mesma coisa nas duas pontas.
+/// Planos com várias colocações por página (E3+, `PlacementWriter`) são verificados
+/// colocação a colocação.
 public struct Validator: Sendable {
     public var pixelsPerPoint: CGFloat
     /// Pixels de tinta fora das colocações tolerados por página (inv. 1a).
@@ -78,7 +80,7 @@ public struct Validator: Sendable {
     /// caixa ignora linhas/colunas com menos de k pixels; se salpico isolado
     /// virar falso positivo nos scans reais do M4, a folga entra aqui.)
     public var uncoveredTolerancePx: Int
-    /// Inv. 1b: diferença tolerada (contagem e pixel a pixel) = max(abs, rel × referência).
+    /// Inv. 1b: pixels diferentes tolerados por colocação = max(abs, rel × tinta da referência).
     /// As grades coincidem, mas em página girada o arredondamento de ponto flutuante
     /// das duas matrizes muda alguns pixels de borda de glifo (medido: ≤ 19 px em
     /// ~200 mil, 0,01%). 0,1% fica 25× abaixo de uma linha de texto perdida (~2,5%
@@ -86,31 +88,52 @@ public struct Validator: Sendable {
     /// quase toda borda de glifo.
     public var writerInkAbsoluteTolerancePx: Int
     public var writerInkRelativeTolerance: Double
+    /// Inv. 1b em página escaneada: a imagem é reamostrada de novo quando desenhada
+    /// pelo Form XObject, com outro alinhamento de pixel, e o ruído do papel vira
+    /// diferença real de cinza na borda das letras (medido: 0,15% no scannedPage a
+    /// escala 1,196). 0,5% ainda fica 5× abaixo de uma linha perdida (~2,5%), e o
+    /// 1a (plano) prova a cobertura independentemente.
+    public var scanInkRelativeTolerance: Double
+    /// Inv. 1b: pixel diferente = |Δcinza| > isto. Com limiar binário, 0,24–2,17% dos
+    /// pixels trocam de lado só por antialiasing (Form XObject × desenho direto difere
+    /// até 4 níveis); corte e deslocamento trocam pixels inteiros (Δ até 255).
+    public var grayTolerance: Int
     /// Inv. 3: erro relativo de proporção (0,1%).
     public var aspectTolerance: Double
-    /// Inv. 5: folga para o ponto de destino (pt).
+    /// Inv. 5: folga para o ponto de destino e o retângulo de link (pt).
     public var destinationTolerancePt: CGFloat
-    /// Inv. 6: saída ≤ orçamento × origem (§9.3, vetor).
-    public var sizeBudget: Double
+    /// Inv. 6: saída ≤ orçamento × origem. BoxWriter: 1,1× (§9.3, vetor).
+    public var boxSizeBudget: Double
+    /// Inv. 6 com PlacementWriter: 1,3× (critério do M3, §17).
+    public var placementSizeBudget: Double
+    /// Inv. 7: erro máximo de ida e volta (pt).
+    public var roundTripTolerancePt: CGFloat
     /// Tarefas simultâneas de render; `nil` = núcleos ativos.
     public var maxConcurrency: Int?
 
     public init(pixelsPerPoint: CGFloat = 2, uncoveredTolerancePx: Int = 0,
-                writerInkAbsoluteTolerancePx: Int = 4, writerInkRelativeTolerance: Double = 0.001,
-                aspectTolerance: Double = 0.001, destinationTolerancePt: CGFloat = 0.5, sizeBudget: Double = 1.1,
+                writerInkAbsoluteTolerancePx: Int = 4, writerInkRelativeTolerance: Double = 0.001, scanInkRelativeTolerance: Double = 0.005,
+                grayTolerance: Int = 32, aspectTolerance: Double = 0.001, destinationTolerancePt: CGFloat = 0.5,
+                boxSizeBudget: Double = 1.1, placementSizeBudget: Double = 1.3, roundTripTolerancePt: CGFloat = 0.01,
                 maxConcurrency: Int? = nil) {
         self.pixelsPerPoint = pixelsPerPoint
         self.uncoveredTolerancePx = uncoveredTolerancePx
         self.writerInkAbsoluteTolerancePx = writerInkAbsoluteTolerancePx
         self.writerInkRelativeTolerance = writerInkRelativeTolerance
+        self.scanInkRelativeTolerance = scanInkRelativeTolerance
+        self.grayTolerance = grayTolerance
         self.aspectTolerance = aspectTolerance
         self.destinationTolerancePt = destinationTolerancePt
-        self.sizeBudget = sizeBudget
+        self.boxSizeBudget = boxSizeBudget
+        self.placementSizeBudget = placementSizeBudget
+        self.roundTripTolerancePt = roundTripTolerancePt
         self.maxConcurrency = maxConcurrency
     }
 
+    /// `writer`: quem gravou `output`; `nil` = o da estratégia do plano.
     public func validate(analysis: DocumentAnalysis, plan: LayoutPlan, source: SourceDocument,
-                         output: URL) async throws -> ValidationReport {
+                         output: URL, writer: WriterKind? = nil) async throws -> ValidationReport {
+        let writer = writer ?? WriterKind(strategy: plan.recipe.strategy)
         let srcData = try Data(contentsOf: source.url, options: .mappedIfSafe)
         let outData = try Data(contentsOf: output, options: .mappedIfSafe)
         let password = source.password
@@ -122,19 +145,34 @@ public struct Validator: Sendable {
         let sourceProbes = try await probeSources(analysis: analysis, plan: plan, data: srcData, password: password, url: srcURL)
         let outputProbes = try await probeOutputs(analysis: analysis, plan: plan, sources: sourceProbes,
                                                   srcData: srcData, password: password, srcURL: srcURL,
-                                                  outData: outData, outURL: output, outCount: outCount)
+                                                  outData: outData, outURL: output, outCount: outCount, writer: writer)
         var results: [InvariantResult] = []
         results.append(noCutInPlan(sourceProbes))
-        results.append(noCutInOutput(outputProbes, plan: plan, outCount: outCount))
+        let scanPages = Set(analysis.pages.filter { $0.kind == .scan }.map(\.index))
+        results.append(noCutInOutput(outputProbes, plan: plan, outCount: outCount, scanPages: scanPages))
         results.append(legibility(analysis: analysis, plan: plan))
         results.append(aspect(outputProbes, plan: plan, outCount: outCount))
-        results.append(InvariantResult(id: "4", title: "Texto", status: .notApplicable,
-                                       detail: "só com PlacementWriter (M3): o BoxWriter não toca o content stream"))
-        results.append(try navigation(plan: plan, srcData: srcData, password: password, srcURL: srcURL,
-                                      outData: outData, outURL: output))
-        results.append(fileSize(analysis: analysis, sourceBytes: srcData.count, outputBytes: outData.count))
-        results.append(InvariantResult(id: "7", title: "Ida e volta", status: .notApplicable,
-                                       detail: "mapa inverso entra com o PlacementWriter (M3)"))
+        switch writer {
+        case .box:
+            results.append(InvariantResult(id: "4", title: "Texto", status: .notApplicable,
+                                           detail: "BoxWriter não toca o content stream: o texto é o da origem"))
+            results.append(try navigation(plan: plan, srcData: srcData, password: password, srcURL: srcURL,
+                                          outData: outData, outURL: output))
+        case .placement:
+            results.append(try text(analysis: analysis, plan: plan, source: source, srcData: srcData, outData: outData,
+                                    outURL: output))
+            results.append(try placementNavigation(plan: plan, srcData: srcData, password: password, srcURL: srcURL,
+                                                   outData: outData, outURL: output))
+        }
+        results.append(fileSize(analysis: analysis, sourceBytes: srcData.count, outputBytes: outData.count,
+                                budget: writer == .box ? boxSizeBudget : placementSizeBudget))
+        switch writer {
+        case .box:
+            results.append(InvariantResult(id: "7", title: "Ida e volta", status: .notApplicable,
+                                           detail: "BoxWriter: a saída é a origem transladada (S2), sem mapa de colocações"))
+        case .placement:
+            results.append(roundTrip(plan: plan))
+        }
         results.append(corners(outputProbes, plan: plan))
         return ValidationReport(results: results)
     }
@@ -154,18 +192,26 @@ public struct Validator: Sendable {
         var renderFailed: Bool
     }
 
+    struct PlacementProbe: Sendable {
+        /// Índice na página de saída.
+        var placement: Int
+        var referenceInk: Int
+        var outputInk: Int
+        /// Pixels com |Δcinza| acima da tolerância; `nil` = sem comparação (ver `note`).
+        var mismatched: Int?
+        var note: String?
+    }
+
     struct OutputProbe: Sendable {
         var index: Int
         var displaySize: CGSize
         var outputInk: Int
-        var referenceInk: Int?
-        /// Pixels que diferem entre saída e referência (grades alinhadas); `nil` se as dimensões divergem.
-        var mismatchedPixels: Int?
+        var placements: [PlacementProbe]
         var cornerInk: Int
         var renderFailed: Bool
     }
 
-    private static func open(_ data: Data, password: String?, url: URL, isSource: Bool) throws -> PDFDocument {
+    static func open(_ data: Data, password: String?, url: URL, isSource: Bool) throws -> PDFDocument {
         guard let doc = PDFDocument(data: data) else {
             throw isSource ? ValidatorError.cannotOpenSource(url) : ValidatorError.cannotOpenOutput(url)
         }
@@ -267,16 +313,17 @@ public struct Validator: Sendable {
 
     private func probeOutputs(analysis: DocumentAnalysis, plan: LayoutPlan, sources: [SourceProbe],
                               srcData: Data, password: String?, srcURL: URL,
-                              outData: Data, outURL: URL, outCount: Int) async throws -> [OutputProbe] {
+                              outData: Data, outURL: URL, outCount: Int, writer: WriterKind) async throws -> [OutputProbe] {
         let ppp = pixelsPerPoint
         let corner = plan.profile.cornerRadiusPt
+        let gray = grayTolerance
         let probes: [OutputProbe] = try await parallel(outCount) { indices in
             let src = try Self.open(srcData, password: password, url: srcURL, isSource: true)
             let out = try Self.open(outData, password: nil, url: outURL, isSource: false)
             return indices.map { j in
                 autoreleasepool {
                     Self.probeOutput(j, out: out, src: src, analysis: analysis, plan: plan, sources: sources,
-                                     ppp: ppp, cornerRadius: corner)
+                                     ppp: ppp, cornerRadius: corner, writer: writer, grayTolerance: gray)
                 }
             }
         }
@@ -285,62 +332,142 @@ public struct Validator: Sendable {
 
     /// Inv. 1b, 3 e 8 numa página de saída.
     ///
-    /// Referência de 1b: a janela renderizada direto da origem, com a mesma
-    /// geometria exibida da página gravada e recortada à área visível da origem.
-    /// O PDFKit grava a página com a origem da MediaBox em (0,0) e translada o
-    /// conteúdo (SPIKES.md, S2); as duas grades de pixels partem do mesmo canto
-    /// da janela, então dá para comparar pixel a pixel, não só a contagem.
+    /// Referência de 1b, por colocação: a janela renderizada direto da origem, na
+    /// escala da colocação e recortada à área visível da origem. Região comparada:
+    /// - BoxWriter: a página exibida inteira (escala 1). O PDFKit grava a página com a
+    ///   origem da MediaBox em (0,0) e translada o conteúdo (SPIKES.md, S2);
+    /// - PlacementWriter: `transform(sourceRect)` na página de saída.
+    /// As duas grades de pixels partem do mesmo canto da janela, então dá para
+    /// comparar pixel a pixel, não só a contagem.
     static func probeOutput(_ j: Int, out: PDFDocument, src: PDFDocument, analysis: DocumentAnalysis, plan: LayoutPlan,
-                            sources: [SourceProbe], ppp: CGFloat, cornerRadius: CGFloat) -> OutputProbe {
+                            sources: [SourceProbe], ppp: CGFloat, cornerRadius: CGFloat, writer: WriterKind,
+                            grayTolerance: Int) -> OutputProbe {
         guard let page = out.page(at: j) else {
-            return OutputProbe(index: j, displaySize: .zero, outputInk: 0, referenceInk: nil, mismatchedPixels: nil,
-                               cornerInk: 0, renderFailed: true)
+            return OutputProbe(index: j, displaySize: .zero, outputInk: 0, placements: [], cornerInk: 0, renderFailed: true)
         }
         var box = page.bounds(for: .mediaBox).intersection(page.bounds(for: .cropBox))
         if box.isNull || box.isEmpty { box = page.bounds(for: .mediaBox) }
         let og = PageGeometry(effectiveBox: box, rotation: page.rotation)
-        let failed = OutputProbe(index: j, displaySize: og.displaySize, outputInk: 0, referenceInk: nil,
-                                 mismatchedPixels: nil, cornerInk: 0, renderFailed: true)
+        let failed = OutputProbe(index: j, displaySize: og.displaySize, outputInk: 0, placements: [], cornerInk: 0,
+                                 renderFailed: true)
         guard let raster = GrayRaster.render(page: page, geometry: og, pixelsPerPoint: ppp) else { return failed }
+        let out = j < plan.pages.count ? plan.pages[j] : nil
+        let placements = out?.placements ?? []
 
-        // Limiar da página de origem correspondente; sem ela, o da própria saída.
-        let placement = j < plan.pages.count && plan.pages[j].placements.count == 1 ? plan.pages[j].placements[0] : nil
-        let probe = placement.flatMap { p in sources.first { $0.index == p.sourcePage && !$0.renderFailed } }
-        func mask(_ r: GrayRaster) -> InkMask {
+        // Limiar da página de origem da 1ª colocação; sem ela, o da própria saída.
+        let firstProbe = placements.first.flatMap { p in sources.first { $0.index == p.sourcePage && !$0.renderFailed } }
+        func mask(_ r: GrayRaster, _ probe: SourceProbe?) -> InkMask {
             guard let probe else { return InkMask.vector(r, background: InkMask.mode(r.histogram())) }
             // Sem limpeza de componentes: ela depende das bordas do raster, que diferem entre os dois.
             return probe.scan ? InkMask.scan(r, histogram: probe.histogram, background: probe.background)
                               : InkMask.vector(r, background: probe.background)
         }
-        let outMask = mask(raster)
+        let outMask = mask(raster, firstProbe)
         let outInk = Ink.sum(outMask)
 
+        // Quadrados de canto do perfil na página exibida: no BoxWriter a página tem a
+        // escala da origem, então o raio vai dividido pela escala da colocação.
         var cornerInk = 0
-        if let placement, placement.scale > 0 {
-            for sq in og.pageBox.cornerSquares(radius: cornerRadius / placement.scale) {
-                let r = raster.mapping.pixelRect(sq)
-                cornerInk += Ink.sum(outMask, x0: r.x0, y0: r.y0, x1: r.x1, y1: r.y1)
+        if let out, out.sizePt.width > 0 {
+            let k = og.displaySize.width / out.sizePt.width
+            for sq in og.pageBox.cornerSquares(radius: cornerRadius * k) {
+                // Só pixels com o centro no quadrado: o indicador de página encosta na borda
+                // do quadrado e o pixel de borda, arredondado para fora, mediria tinta de fora.
+                let m = raster.mapping, s = m.pixelsPerPoint
+                let x0 = Int(((sq.minX - m.pageBox.minX) * s - 0.5).rounded(.up))
+                let x1 = Int(((sq.maxX - m.pageBox.minX) * s - 0.5).rounded(.up))
+                let y0 = Int(((m.pageBox.maxY - sq.maxY) * s - 0.5).rounded(.up))
+                let y1 = Int(((m.pageBox.maxY - sq.minY) * s - 0.5).rounded(.up))
+                cornerInk += Ink.sum(outMask, x0: x0, y0: y0, x1: x1, y1: y1)
             }
         }
 
-        var refInk: Int?
-        var mismatch: Int?
-        if let placement, let probe, let a = analysis.pages.first(where: { $0.index == placement.sourcePage }),
-           let srcPage = src.page(at: placement.sourcePage) {
-            let window = a.geometry.toUser(placement.sourceRect)
-            let rg = PageGeometry(effectiveBox: window, rotation: a.geometry.rotation)
-            var clip = window.intersection(probe.visible)
-            if clip.isNull { clip = .zero }
-            if let ref = GrayRaster.render(page: srcPage, geometry: rg, pixelsPerPoint: ppp, clip: clip) {
-                let refMask = mask(ref)
-                refInk = Ink.sum(refMask)
-                if ref.width == raster.width && ref.height == raster.height {
-                    mismatch = Ink.difference(refMask, outMask)
-                }
+        // Sobreposições do escritor (indicador de página, marca de continuidade) podem cair
+        // dentro da região de uma colocação (E0 de página vazia ocupa a tela toda): fora da comparação.
+        // O BoxWriter não desenha sobreposições (e a página dele não está no espaço do plano).
+        let excluded: [CGRect] = writer == .box ? [] : (out?.overlays ?? []).compactMap {
+            switch $0 {
+            case .continuityMark(let y): CGRect(x: -1e6, y: y - 1.5, width: 2e6, height: 3)
+            case .pageIndicator(_, let r), .progressBar(_, let r): r.insetBy(dx: -1, dy: -1)
             }
         }
-        return OutputProbe(index: j, displaySize: og.displaySize, outputInk: outInk, referenceInk: refInk,
-                           mismatchedPixels: mismatch, cornerInk: cornerInk, renderFailed: false)
+
+        var results: [PlacementProbe] = []
+        for (k, p) in placements.enumerated() {
+            var r = PlacementProbe(placement: k, referenceInk: 0, outputInk: 0, mismatched: nil, note: nil)
+            guard let probe = sources.first(where: { $0.index == p.sourcePage && !$0.renderFailed }),
+                  let a = analysis.pages.first(where: { $0.index == p.sourcePage }),
+                  let srcPage = src.page(at: p.sourcePage) else {
+                r.note = "origem p. \(p.sourcePage + 1) sem render"
+                results.append(r)
+                continue
+            }
+            let g = p.sourceGeometry ?? a.geometry
+            let window = g.toUser(p.sourceRect)
+            let rg = PageGeometry(effectiveBox: window, rotation: g.rotation)
+            var clip = window.intersection(probe.visible)
+            if clip.isNull { clip = .zero }
+
+            // Região de saída (espaço de página exibida) e escala da referência.
+            let region: CGRect, refScale: CGFloat, outRaster: GrayRaster?
+            switch writer {
+            case .box:
+                region = og.pageBox
+                refScale = 1
+                outRaster = raster
+            case .placement:
+                let t = p.transform
+                // Fatias e colunas só escalam e transladam; outra matriz pede outra referência.
+                guard abs(t.b) < 1e-9, abs(t.c) < 1e-9, t.a > 0, abs(t.a - t.d) <= 1e-9 * t.a else {
+                    r.note = "matriz com rotação ou cisalhamento: comparação não suportada"
+                    results.append(r)
+                    continue
+                }
+                region = p.sourceRect.applying(t).standardized
+                refScale = t.a
+                outRaster = GrayRaster.render(page: page, geometry: PageGeometry(effectiveBox: og.toUser(region),
+                                                                                rotation: page.rotation),
+                                              pixelsPerPoint: ppp)
+            }
+            guard var ref = GrayRaster.render(page: srcPage, geometry: rg, pixelsPerPoint: ppp * refScale, clip: clip),
+                  let outR = outRaster else {
+                r.note = "falha ao renderizar"
+                results.append(r)
+                continue
+            }
+            // Região oculta: o escritor pinta de branco; na referência também.
+            for h in p.hidden {
+                let x = h.standardized.intersection(p.sourceRect)
+                guard !x.isNull, x.width > 0, x.height > 0 else { continue }
+                let pr = ref.mapping.pixelRect(rg.toPage(g.toUser(x)))
+                for y in pr.y0..<max(pr.y0, pr.y1) { for xx in pr.x0..<max(pr.x0, pr.x1) { ref.pixels[y * ref.width + xx] = 255 } }
+            }
+            // Mesma grade a menos de arredondamento de ponto flutuante no tamanho (ceil).
+            guard abs(ref.width - outR.width) <= 1, abs(ref.height - outR.height) <= 1 else {
+                r.note = "grades divergem (\(ref.width)×\(ref.height) contra \(outR.width)×\(outR.height) px)"
+                results.append(r)
+                continue
+            }
+            let w = min(ref.width, outR.width), h = min(ref.height, outR.height)
+            var outC = outR
+            for e in excluded where e.intersects(region) {
+                // Grades alinhadas: o mesmo retângulo de pixels nas duas.
+                let pr = outR.mapping.pixelRect(og.toPage(og.toUser(e.intersection(region))))
+                for y in pr.y0..<min(h, max(pr.y0, pr.y1)) {
+                    for x in pr.x0..<min(w, max(pr.x0, pr.x1)) {
+                        ref.pixels[y * ref.width + x] = 255
+                        outC.pixels[y * outC.width + x] = 255
+                    }
+                }
+            }
+            let refMask = mask(ref, probe), regionMask = mask(outC, probe)
+            r.referenceInk = Ink.sum(refMask, x0: 0, y0: 0, x1: w, y1: h)
+            r.outputInk = Ink.sum(regionMask, x0: 0, y0: 0, x1: w, y1: h)
+            r.mismatched = Gray.mismatched(ref, outC, width: w, height: h, tolerance: grayTolerance)
+            results.append(r)
+        }
+        return OutputProbe(index: j, displaySize: og.displaySize, outputInk: outInk, placements: results,
+                           cornerInk: cornerInk, renderFailed: false)
     }
 
     // MARK: - Invariantes
@@ -369,43 +496,68 @@ public struct Validator: Sendable {
                                detail: detail, metrics: metrics, sourcePages: (bad + failedRenders).sorted())
     }
 
-    func noCutInOutput(_ probes: [OutputProbe], plan: LayoutPlan, outCount: Int) -> InvariantResult {
+    func noCutInOutput(_ probes: [OutputProbe], plan: LayoutPlan, outCount: Int, scanPages: Set<Int> = []) -> InvariantResult {
         var bad: [Int] = []
         var notes: [String] = []
-        var worstRel = 0.0, worstMismatch = 0, refTotal = 0, outTotal = 0
+        var worstRel = 0.0, worstMismatch = 0, refTotal = 0, outTotal = 0, compared = 0
         if outCount != plan.pages.count {
             return InvariantResult(id: "1b", title: "Nenhuma tinta cortada (saída)", status: .failed,
                                    detail: "saída com \(outCount) páginas; o plano tem \(plan.pages.count)")
         }
         for p in probes {
-            guard !p.renderFailed, let ref = p.referenceInk else {
+            guard !p.renderFailed else {
                 bad.append(p.index); notes.append("saída p. \(p.index + 1): sem render"); continue
             }
-            refTotal += ref
-            outTotal += p.outputInk
-            let diff = abs(p.outputInk - ref)
-            let tol = max(Double(writerInkAbsoluteTolerancePx), writerInkRelativeTolerance * Double(ref))
-            let rel = ref > 0 ? Double(diff) / Double(ref) : (diff > 0 ? 1 : 0)
-            worstRel = max(worstRel, rel)
-            if let m = p.mismatchedPixels { worstMismatch = max(worstMismatch, m) }
-            // Pixel a pixel com a mesma tolerância: pega deslocamento que a contagem não vê.
-            let mismatchBad = p.mismatchedPixels.map { Double($0) > tol } ?? false
-            if Double(diff) > tol || mismatchBad {
-                bad.append(p.index)
-                notes.append("saída p. \(p.index + 1): \(p.outputInk) px contra \(ref) px na janela de origem"
-                             + (p.mismatchedPixels.map { ", \($0) px diferentes" } ?? ""))
+            var pageBad = false
+            for c in p.placements {
+                let tag = plan.pages[p.index].placements.count > 1 ? " colocação \(c.placement + 1)" : ""
+                guard let m = c.mismatched else {
+                    pageBad = true
+                    notes.append("saída p. \(p.index + 1)\(tag): \(c.note ?? "sem comparação")")
+                    continue
+                }
+                compared += 1
+                refTotal += c.referenceInk
+                outTotal += c.outputInk
+                let rel = c.referenceInk > 0 ? Double(m) / Double(c.referenceInk) : (m > 0 ? 1 : 0)
+                worstRel = max(worstRel, rel)
+                worstMismatch = max(worstMismatch, m)
+                let source = plan.pages[p.index].placements[c.placement].sourcePage
+                let rel0 = scanPages.contains(source) ? scanInkRelativeTolerance : writerInkRelativeTolerance
+                let tol = max(Double(writerInkAbsoluteTolerancePx), rel0 * Double(c.referenceInk))
+                if Double(m) > tol {
+                    pageBad = true
+                    notes.append("saída p. \(p.index + 1)\(tag): \(m) px diferentes (tinta \(c.outputInk) px contra \(c.referenceInk) px na janela de origem)")
+                }
             }
+            if pageBad { bad.append(p.index) }
         }
         let metrics = [Metric("tinta na saída", Double(outTotal), "px"),
                        Metric("tinta nas janelas de origem", Double(refTotal), "px"),
+                       Metric("colocações comparadas", Double(compared)),
                        Metric("pior diferença relativa", worstRel * 100, "%"),
                        Metric("pior diferença pixel a pixel", Double(worstMismatch), "px")]
         let ok = bad.isEmpty
         return InvariantResult(id: "1b", title: "Nenhuma tinta cortada (saída)", status: ok ? .passed : .failed,
-                               detail: ok ? "cada página gravada tem a mesma tinta da janela de origem" : notes.joined(separator: "; "),
+                               detail: ok ? "cada colocação gravada tem a mesma tinta da janela de origem"
+                                          : notes.prefix(8).joined(separator: "; "),
                                metrics: metrics, outputPages: bad)
     }
 
+    /// Colocação mostra texto do tamanho do corpo (`BodyText.band`)? Com blocos, só as
+    /// linhas de blocos de texto (rótulo dentro de figura não é corpo, como no plano);
+    /// sem blocos, as linhas da página; página com tinta e sem linhas (scan sem OCR)
+    /// conta como corpo, como antes do M3: melhor avisar demais.
+    static func showsBody(_ p: Placement, page a: PageAnalysis, body: CGFloat) -> Bool {
+        let lines = a.blocks.isEmpty ? a.lines : a.blocks.filter { !$0.isAtomic }.flatMap(\.lines)
+        guard !lines.isEmpty else { return a.blocks.isEmpty }
+        return lines.contains { l in
+            p.sourceRect.contains(CGPoint(x: l.rect.midX, y: l.rect.midY)) && BodyText.isBodySized(l.xHeightPt, body: body)
+        }
+    }
+
+    /// Inv. 2: toda colocação que mostra texto do tamanho do corpo o mostra ≥ mínimo,
+    /// ou o plano avisa. Em E5, resumo de largura total reduzido conta (é corpo).
     func legibility(analysis: DocumentAnalysis, plan: LayoutPlan) -> InvariantResult {
         let leg = plan.recipe.legibility
         let warned = plan.warnings.contains { if case .belowMinimumLegibility = $0 { true } else { false } }
@@ -416,11 +568,15 @@ public struct Validator: Sendable {
         var minMM = Double.infinity
         var below: [Int] = []
         for (j, out) in plan.pages.enumerated() {
-            guard let p = out.placements.first,
-                  let a = analysis.pages.first(where: { $0.index == p.sourcePage }), a.inkBox != nil else { continue }
-            let mm = Legibility.finalXHeightMM(sourceXHeightPt: Double(body), scale: Double(p.scale))
-            minMM = min(minMM, mm)
-            if mm < leg.minimumMM { below.append(j) }
+            var pageBelow = false
+            for p in out.placements {
+                guard let a = analysis.pages.first(where: { $0.index == p.sourcePage }), a.inkBox != nil,
+                      Self.showsBody(p, page: a, body: body) else { continue }
+                let mm = Legibility.finalXHeightMM(sourceXHeightPt: Double(body), scale: Double(p.scale))
+                minMM = min(minMM, mm)
+                if mm < leg.minimumMM { pageBelow = true }
+            }
+            if pageBelow { below.append(j) }
         }
         guard minMM.isFinite else {
             return InvariantResult(id: "2", title: "Legibilidade", status: .notApplicable, detail: "nenhuma página com tinta")
@@ -438,7 +594,7 @@ public struct Validator: Sendable {
             detail = "\(below.count) páginas abaixo do mínimo, com aviso no plano"
         } else {
             status = .failed
-            detail = "\(below.count) páginas abaixo do mínimo sem aviso no plano"
+            detail = "\(below.count) páginas abaixo do mínimo sem aviso no plano (\(Describe.number(pt)) pt equivalente no pior caso)"
         }
         return InvariantResult(id: "2", title: "Legibilidade", status: status, detail: detail, metrics: metrics, outputPages: below)
     }
@@ -469,15 +625,16 @@ public struct Validator: Sendable {
                                           : "\(bad.count) páginas fora da proporção", metrics: metrics, outputPages: bad)
     }
 
-    func fileSize(analysis: DocumentAnalysis, sourceBytes: Int, outputBytes: Int) -> InvariantResult {
+    func fileSize(analysis: DocumentAnalysis, sourceBytes: Int, outputBytes: Int, budget: Double) -> InvariantResult {
         let ratio = sourceBytes > 0 ? Double(outputBytes) / Double(sourceBytes) : 0
-        let ok = ratio <= sizeBudget
-        var detail = ok ? "saída \(Describe.number(ratio, decimals: 3))× a origem" : "saída \(Describe.number(ratio, decimals: 3))× a origem, acima de \(Describe.number(sizeBudget))×"
+        let ok = ratio <= budget
+        var detail = "saída \(Describe.number(ratio, decimals: 3))× a origem"
+            + (ok ? " (meta ≤ \(Describe.number(budget))×)" : ", acima de \(Describe.number(budget))×")
         // §9.3 pede ≤ 0,6× em scan colorido, o que exige reamostrar (M4); aqui só o teto de vetor.
         if analysis.kind == .scannedBook { detail += "; meta de scan (≤ 0,6×) depende da reamostragem do M4" }
         return InvariantResult(id: "6", title: "Tamanho", status: ok ? .passed : .failed, detail: detail,
                                metrics: [Metric("origem", Double(sourceBytes), "B"), Metric("saída", Double(outputBytes), "B"),
-                                         Metric("razão", ratio)])
+                                         Metric("razão", ratio), Metric("orçamento", budget)])
     }
 
     func corners(_ probes: [OutputProbe], plan: LayoutPlan) -> InvariantResult {
@@ -633,6 +790,30 @@ enum BoxGeometry {
         var effective = media.intersection(page.bounds(for: .cropBox))
         if effective.isNull || effective.isEmpty { effective = media }
         return PageGeometry(effectiveBox: effective, rotation: page.rotation)
+    }
+}
+
+/// Comparação de rasters cinza (mesma grade).
+enum Gray {
+    /// Pixels de `a` e `b` com |Δ| > `tolerance`, nos primeiros
+    /// `width` × `height` pixels de cada um.
+    static func mismatched(_ a: GrayRaster, _ b: GrayRaster, width w: Int, height h: Int, tolerance: Int) -> Int {
+        guard w > 0, h > 0 else { return 0 }
+        var fa = [Float](repeating: 0, count: w), fb = [Float](repeating: 0, count: w), d = [Float](repeating: 0, count: w)
+        var threshold = Float(tolerance) + 0.5, one: Float = 1
+        var total = 0
+        for y in 0..<h {
+            a.pixels.withUnsafeBufferPointer { vDSP_vfltu8($0.baseAddress! + y * a.width, 1, &fa, 1, vDSP_Length(w)) }
+            b.pixels.withUnsafeBufferPointer { vDSP_vfltu8($0.baseAddress! + y * b.width, 1, &fb, 1, vDSP_Length(w)) }
+            vDSP_vsub(fa, 1, fb, 1, &d, 1, vDSP_Length(w))
+            vDSP_vabs(d, 1, &d, 1, vDSP_Length(w))
+            // ±1 por pixel: soma = acima − abaixo.
+            vDSP_vlim(d, 1, &threshold, &one, &d, 1, vDSP_Length(w))
+            var s: Float = 0
+            vDSP_sve(d, 1, &s, vDSP_Length(w))
+            total += (Int(s.rounded()) + w) / 2
+        }
+        return total
     }
 }
 

@@ -45,7 +45,8 @@ public enum WriteWarning: Codable, Sendable, Equatable {
     /// A janela gravada não tem a proporção de `OutputPage.sizePt`.
     case aspectMismatch(outputPage: Int, relativeError: Double)
     /// Saída acima do orçamento do escritor: 1,1× no BoxWriter (§9.3), 1,3× no PlacementWriter (§17 M3).
-    case sizeBudgetExceeded(ratio: Double)
+    /// `budget` opcional: relatórios gravados antes dele continuam decodificáveis.
+    case sizeBudgetExceeded(ratio: Double, budget: Double? = nil)
     /// O BoxWriter não desenha sobreposições (indicador de página etc.).
     case overlaysIgnored(count: Int)
     /// Não foi possível gravar o `Producer` (xref não clássica); o vínculo com a receita se perde.

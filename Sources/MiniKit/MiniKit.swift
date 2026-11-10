@@ -10,7 +10,7 @@ import PDFWriting
 
 /// Como escolher a estratégia.
 public enum ConversionMode: String, Codable, Sendable, CaseIterable {
-    /// Motor de decisão (§8) entre E0 e E1.
+    /// Motor de decisão (§8) entre E0, E1 (E2 com a opção), E3, E4 e E5, no perfil e no perfil girado.
     case auto
     /// Força E1.
     case crop
@@ -18,6 +18,12 @@ public enum ConversionMode: String, Codable, Sendable, CaseIterable {
     case passthrough
     /// Força E2 (recorte sem cabeçalho/rodapé), mesmo com `removeHeaderFooter` desligado.
     case aggressiveCrop = "aggressive"
+    /// Força E3 (fatias em paisagem; usa o perfil girado se o escolhido for retrato).
+    case landscapeSlices
+    /// Força E4 (fatias em retrato; usa o perfil girado se o escolhido for paisagem).
+    case portraitSlices
+    /// Força E5 (colunas).
+    case columns
 
     var forcedStrategy: StrategyID? {
         switch self {
@@ -25,7 +31,22 @@ public enum ConversionMode: String, Codable, Sendable, CaseIterable {
         case .crop: .crop
         case .passthrough: .passthrough
         case .aggressiveCrop: .aggressiveCrop
+        case .landscapeSlices: .landscapeSlices
+        case .portraitSlices: .portraitSlices
+        case .columns: .columns
         }
+    }
+}
+
+/// Escritor que grava cada estratégia. PLAN.md §9.1.
+public enum WriterKind: String, Codable, Sendable {
+    /// `BoxWriter` (PDFKit, caixas em lugar): E0–E2.
+    case box
+    /// `PlacementWriter` (qpdf, colocações com clip): E3 em diante.
+    case placement
+
+    public init(strategy: StrategyID) {
+        self = strategy.fidelityCost <= StrategyID.aggressiveCrop.fidelityCost ? .box : .placement
     }
 }
 
@@ -77,11 +98,25 @@ public struct Converter: Sendable {
         self.validator = validator
     }
 
-    /// E0 e E1 sempre; E2 só com a remoção pedida (opção ou modo forçado).
+    /// E0 e E1 sempre; E2 só com a remoção pedida (opção ou modo forçado); E3, E4 e E5 sempre.
     static func strategies(_ o: ConversionOptions) -> [any AdaptationStrategy] {
         var s: [any AdaptationStrategy] = [PassthroughStrategy(), CropStrategy()]
         if o.removeHeaderFooter || o.mode == .aggressiveCrop { s.append(AggressiveCropStrategy()) }
+        s += [LandscapeSlicesStrategy(), PortraitSlicesStrategy(), ColumnsStrategy()]
         return s
+    }
+
+    /// Perfil escolhido e o girado (§8: estratégia × orientação).
+    static func profiles(_ o: ConversionOptions) -> [ViewportProfile] { [o.profile, o.profile.rotated] }
+
+    /// E3 só existe em paisagem e E4 só em retrato: a estimativa na outra orientação
+    /// é um marcador de inaplicável (sem corpo) e só poluiria a tabela de candidatos.
+    static func applicable(_ c: Candidate) -> Bool {
+        switch c.strategy {
+        case .landscapeSlices: c.profile.orientation == .landscape
+        case .portraitSlices: c.profile.orientation == .portrait
+        default: true
+        }
     }
 
     public func analyze(input: URL, password: String? = nil) async throws -> DocumentAnalysis {
@@ -102,18 +137,31 @@ public struct Converter: Sendable {
         // Remoção pedida: tirar cabeçalho/rodapé não conta como perda de fidelidade,
         // E2 empata com E1 e vence quando rende corpo maior.
         let overrides: [StrategyID: Int] = options.removeHeaderFooter ? [.aggressiveCrop: StrategyID.crop.fidelityCost] : [:]
-        let engine = DecisionEngine(strategies: strategies, profiles: [options.profile], costOverrides: overrides)
+        let engine = DecisionEngine(strategies: strategies, profiles: Self.profiles(options), costOverrides: overrides)
         guard let decision = engine.decide(doc, recipe: options.recipe) else { throw ConversionError.noCandidate }
+        // Filtrar preserva a ordem da regra.
+        let ranked = decision.candidates.filter(Self.applicable)
+        guard !ranked.isEmpty else { throw ConversionError.noCandidate }
         let chosenIndex: Int
         if let forced = options.mode.forcedStrategy {
-            guard let i = decision.candidates.firstIndex(where: { $0.strategy == forced }) else {
+            // Forçado: no perfil pedido quando a estratégia se aplica a ele (o usuário
+            // escolheu a orientação); senão no girado (E3 com perfil retrato).
+            guard let i = ranked.firstIndex(where: { $0.strategy == forced && $0.profile == options.profile })
+                    ?? ranked.firstIndex(where: { $0.strategy == forced }) else {
                 throw ConversionError.strategyUnavailable(forced)
             }
             chosenIndex = i
         } else {
-            chosenIndex = 0
+            // A orientação faz parte do perfil escolhido (§3): só gira quando nada na
+            // orientação pedida chega ao mínimo. Sem isso um livro 6×9 ia para fatias
+            // em paisagem (2,6 telas por página) em vez do recorte em retrato.
+            let legibility = options.recipe.legibility
+            chosenIndex = ranked.firstIndex {
+                $0.profile == options.profile
+                    && LegibilityTier($0.estimate.bodyXHeightMM, legibility) <= .meetsMinimum
+            } ?? 0
         }
-        let chosen = decision.candidates[chosenIndex]
+        let chosen = ranked[chosenIndex]
         guard let strategy = strategies.first(where: { $0.id == chosen.strategy }) else {
             throw ConversionError.strategyUnavailable(chosen.strategy)
         }
@@ -121,16 +169,21 @@ public struct Converter: Sendable {
         recipe.strategy = strategy.id
         let plan = strategy.plan(doc, chosen.profile, recipe)
         let legibility = options.recipe.legibility
-        let candidates = decision.candidates.map { CandidateSummary($0, legibility: legibility) }
+        let candidates = ranked.map { CandidateSummary($0, legibility: legibility) }
         return PlanResult(analysis: doc, candidates: candidates, chosenIndex: chosenIndex, mode: options.mode, plan: plan)
     }
 
     public func convert(input: URL, output: URL, options: ConversionOptions) async throws -> ConversionReport {
         let planned = try await plan(input: input, options: options)
         let source = SourceDocument(url: input, password: options.password)
-        let write = try await BoxWriter().write(planned.plan, source: source, to: output, options: options.writeOptions)
+        let writer = WriterKind(strategy: planned.plan.recipe.strategy)
+        let write = switch writer {
+        case .box: try await BoxWriter().write(planned.plan, source: source, to: output, options: options.writeOptions)
+        case .placement: try await PlacementWriter().write(planned.plan, source: source, to: output, options: options.writeOptions)
+        }
         let validation: ValidationReport? = options.validate
-            ? try await validator.validate(analysis: planned.analysis, plan: planned.plan, source: source, output: output)
+            ? try await validator.validate(analysis: planned.analysis, plan: planned.plan, source: source, output: output,
+                                           writer: writer)
             : nil
         return ConversionReport(input: input.path, output: output.path, analysis: AnalysisSummary(planned.analysis),
                                 candidates: planned.candidates, chosenIndex: planned.chosenIndex, mode: options.mode,

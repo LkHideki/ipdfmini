@@ -8,23 +8,42 @@ import SyntheticCorpus
 import Testing
 @testable import MiniKit
 
-// Aceite do M1 (PLAN.md §17) ponta a ponta sobre o corpus sintético.
+// Aceite do M1 (PLAN.md §17) ponta a ponta sobre o corpus sintético, com o auto do M3 (E0–E5).
 
 @Suite struct AcceptanceTests {
-    /// Todos os invariantes, sem e com a remoção de cabeçalho/rodapé.
+    /// Todos os invariantes, sem e com a remoção de cabeçalho/rodapé, com a estratégia
+    /// que o auto escolher (E0–E5). 4 e 7 só se aplicam ao PlacementWriter (E3+).
     @Test(arguments: Scenario.allCases, [false, true])
     func invariantsHoldOnEveryScenario(_ s: Scenario, removeHeaders: Bool) async throws {
         let c = try await ConversionCache.shared.converted(s, removeHeaders: removeHeaders)
-        let tag = "\(s)\(removeHeaders ? " (E2 permitido)" : "")"
+        try Self.expectAllInvariants(c, tag: "\(s)\(removeHeaders ? " (E2 permitido)" : "")")
+    }
+
+    /// E0–E2 forçados (BoxWriter) continuam verdes em todos os cenários: o auto do M3
+    /// raramente os escolhe, e sem isto o caminho do BoxWriter no validador ficaria sem prova.
+    @Test(arguments: Scenario.allCases, [ConversionMode.crop, .aggressiveCrop, .passthrough])
+    func invariantsHoldWithBoxWriter(_ s: Scenario, mode: ConversionMode) async throws {
+        let c = try await ConversionCache.shared.converted(s, mode: mode)
+        #expect(WriterKind(strategy: c.report.plan.recipe.strategy) == .box)
+        try Self.expectAllInvariants(c, tag: "\(s) \(mode.rawValue)")
+    }
+
+    static func expectAllInvariants(_ c: Converted, tag: String) throws {
         let v = try #require(c.report.validation)
-        for id in ["1a", "1b", "2", "3", "5", "6", "8"] {
+        let box = WriterKind(strategy: c.report.plan.recipe.strategy) == .box
+        for id in ["1a", "1b", "2", "3", "4", "5", "6", "7", "8"] {
             let r = try #require(v.result(id), "\(tag): invariante \(id) ausente")
-            #expect(r.status == .passed, "\(tag) inv. \(id): \(r.detail)")
+            if box, id == "4" || id == "7" {
+                #expect(r.status == .notApplicable && !r.detail.isEmpty, "\(tag) inv. \(id)")
+            } else {
+                #expect(r.status == .passed, "\(tag) [\(c.report.chosen.strategy.rawValue)] inv. \(id): \(r.detail)")
+            }
         }
-        for id in ["4", "7"] { #expect(v.result(id)?.status == .notApplicable, "\(tag) inv. \(id)") }
         #expect(v.result("1a")?.metric("tinta descoberta (total)") == 0, "\(tag): tinta cortada no plano")
         #expect(c.report.passed)
-        #expect(c.report.write.outputPageCount == c.truth.pages.count)
+        // BoxWriter: uma página de saída por página de origem; fatias multiplicam.
+        if box { #expect(c.report.write.outputPageCount == c.truth.pages.count) }
+        #expect(c.report.write.outputPageCount == c.report.plan.pages.count)
     }
 
     /// §17: corpo ≥ 9 pt equivalente em ≥ 90% dos livros 6×9, com a remoção de
@@ -46,27 +65,30 @@ import Testing
         #expect(fraction >= 0.9, "corpo ≥ 9 pt em \(ok) de \(bookScenarios.count) livros: \(rows.joined(separator: " · "))")
     }
 
-    /// Opção desligada (padrão, §18 R5): auto fica no E1, E2 nem é candidato e
-    /// todo bloco de cabeçalho/rodapé continua dentro da janela.
+    /// Opção desligada (padrão, §18 R5): E2 nem é candidato, o auto não o escolhe e
+    /// todo bloco de cabeçalho/rodapé continua inteiro dentro de alguma colocação
+    /// (no M1 o auto era sempre E1; com E3–E5 candidatos, a garantia vale para todos).
     @Test(arguments: Scenario.allCases)
     func headersKeptWhenRemovalIsOff(_ s: Scenario) async throws {
         let c = try await ConversionCache.shared.converted(s)
         let analysis = try await ConversionCache.shared.analysis(s)
-        #expect(c.report.chosen.strategy == .crop)
+        #expect(c.report.chosen.strategy != .aggressiveCrop)
         #expect(!c.report.candidates.contains { $0.strategy == .aggressiveCrop })
-        for out in c.report.plan.pages {
-            let p = try #require(out.placements.first)
-            let page = analysis.pages[p.sourcePage]
+        for page in analysis.pages {
+            let windows = c.report.plan.pages.flatMap { $0.placements.filter { $0.sourcePage == page.index }.map(\.sourceRect) }
             for b in page.blocks where b.type == .headerFooter {
-                #expect(p.sourceRect.insetBy(dx: -1e-6, dy: -1e-6).contains(b.rect), "\(s) p. \(page.index + 1): \(b.rect) fora")
+                #expect(windows.contains { $0.insetBy(dx: -1e-6, dy: -1e-6).contains(b.rect) },
+                        "\(s) p. \(page.index + 1): \(b.rect) fora de toda colocação")
             }
         }
     }
 
-    /// Com E2: o que sai é inteiro (nunca cortado ao meio) e o cabeçalho corrido dos livros sai mesmo.
+    /// Com E2: o que sai é inteiro (nunca cortado ao meio) e o cabeçalho corrido dos livros
+    /// sai mesmo. E2 forçado: com E3–E5 candidatos, o auto prefere fatias nos livros (E1/E2
+    /// não chegam ao alvo), e o que se prova aqui é a remoção do E2.
     @Test(arguments: bookScenarios)
     func removedBlocksAreWholeOutside(_ s: Scenario) async throws {
-        let c = try await ConversionCache.shared.converted(s, removeHeaders: true)
+        let c = try await ConversionCache.shared.converted(s, removeHeaders: true, mode: .aggressiveCrop)
         let analysis = try await ConversionCache.shared.analysis(s)
         #expect(c.report.chosen.strategy == .aggressiveCrop)
         var removed = 0
@@ -93,16 +115,23 @@ import Testing
         #expect(nav.metric("anotações") == Double(c.truth.annotationCount))
         #expect(nav.metric("links internos verificados") == 4)
 
-        // Conferência independente: destinos do sumário nas páginas da verdade
-        // (capítulos e seções nas páginas 2, 2, 3, 4, 5 e 6) e ponto dentro da página.
+        // Conferência independente: destinos do sumário vêm das páginas de origem da
+        // verdade (capítulos e seções nas páginas 2, 2, 3, 4, 5 e 6), com o ponto dentro
+        // da página e de uma colocação dessa origem.
         let out = try #require(PDFDocument(url: c.output))
+        let plan = c.report.plan
         var pages: [Int] = []
         func walk(_ o: PDFOutline) {
             for i in 0..<o.numberOfChildren {
                 let item = o.child(at: i)!
                 if let d = item.destination, let p = d.page {
-                    pages.append(out.index(for: p))
+                    let j = out.index(for: p)
                     #expect(p.bounds(for: .cropBox).contains(d.point), "\(item.label ?? ""): \(d.point)")
+                    let hit = plan.pages[j].placements.first {
+                        $0.sourceRect.applying($0.transform).standardized.insetBy(dx: -0.5, dy: -0.5).contains(d.point)
+                    }
+                    #expect(hit != nil, "\(item.label ?? ""): ponto fora das colocações")
+                    pages.append(hit?.sourcePage ?? -1)
                 }
                 walk(item)
             }
@@ -112,21 +141,27 @@ import Testing
     }
 
     /// §17: variação de escala entre páginas da mesma classe = 0, fora as exceções declaradas.
+    /// Vale para E0–E4 (escala travada por classe); E5 tem, por desenho (§7), escala da
+    /// coluna no documento todo e escala própria para cada bloco de largura total.
     @Test(arguments: Scenario.allCases, [false, true])
     func scaleLockedWithinClass(_ s: Scenario, removeHeaders: Bool) async throws {
         let c = try await ConversionCache.shared.converted(s, removeHeaders: removeHeaders)
         let analysis = try await ConversionCache.shared.analysis(s)
         let plan = c.report.plan
         #expect(plan.recipe.classMode == .oddEven)
+        guard plan.recipe.strategy != .columns else { return }
         let exceptions = Set(plan.warnings.compactMap { if case let .scaleException(p, _, _) = $0 { p } else { nil } })
+        // Página vazia nas fatias sai inteira (como no E0), com a escala dela e aviso próprio.
+        let empty: Set<Int> = WriterKind(strategy: plan.recipe.strategy) == .box ? []
+            : Set(plan.warnings.compactMap { if case let .emptyPage(p) = $0 { p } else { nil } })
         let groups = sizeGroups(analysis.pages.map(\.pageBox.size))
         var scales: [Int: Set<CGFloat>] = [:]
         for out in plan.pages {
-            let p = try #require(out.placements.first)
-            guard !exceptions.contains(p.sourcePage) else { continue }
-            scales[groups[p.sourcePage] * 2 + (p.sourcePage & 1), default: []].insert(p.scale)
+            for p in out.placements where !exceptions.contains(p.sourcePage) && !empty.contains(p.sourcePage) {
+                scales[groups[p.sourcePage] * 2 + (p.sourcePage & 1), default: []].insert(p.scale)
+            }
         }
-        for (k, v) in scales { #expect(v.count == 1, "\(s) classe \(k): escalas \(v.sorted())") }
+        for (k, v) in scales { #expect(v.count == 1, "\(s) [\(plan.recipe.strategy.rawValue)] classe \(k): escalas \(v.sorted())") }
     }
 
     /// Análise contra a verdade do corpus: caixa de tinta ±1 pt, altura-x ±5%.

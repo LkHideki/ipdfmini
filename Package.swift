@@ -22,7 +22,8 @@ let package = Package(
             name: "ipdfmini-cli",
             dependencies: ["MiniKit", "SyntheticCorpus", .product(name: "ArgumentParser", package: "swift-argument-parser")]
         ),
-        .executableTarget(name: "ipdfmini-spikes", dependencies: ["MiniGeometry"]),
+        // QPDFKit: gerador do S5 (colocações com clip, mesmo caminho do PlacementWriter).
+        .executableTarget(name: "ipdfmini-spikes", dependencies: ["MiniGeometry", "QPDFKit"]),
 
         // libjpeg-turbo 3.2.1, C puro, sem SIMD. Obrigatório: Pl_DCT.hh do qpdf inclui jpeglib.h.
         // As .c com sufixo de precisão (src/wrapper) incluem as demais; por isso a lista é explícita.

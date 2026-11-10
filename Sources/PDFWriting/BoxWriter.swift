@@ -104,7 +104,7 @@ public struct BoxWriter: PDFWriter {
         let sourceBytes = Self.fileSize(source.url)
         if sourceBytes > 0 {
             let ratio = Double(bytes) / Double(sourceBytes)
-            if ratio > 1.1 { warnings.append(.sizeBudgetExceeded(ratio: ratio)) }
+            if ratio > 1.1 { warnings.append(.sizeBudgetExceeded(ratio: ratio, budget: 1.1)) }
         }
         return WriteReport(outputPageCount: plan.pages.count, bytes: bytes, warnings: warnings)
     }

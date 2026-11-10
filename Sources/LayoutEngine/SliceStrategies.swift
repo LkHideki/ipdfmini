@@ -69,6 +69,14 @@ enum SlicePlanner {
         return CGFloat(Legibility.xHeightPt(fromMM: recipe.legibility.targetMM)) / x * (1 + 1e-9)
     }
 
+    /// Escala que põe o corpo no máximo da §2.2 (1,90 mm): acima disso a página
+    /// vira mais telas sem ganho de leitura. Sem isso o E3 de um livro 6×9 saía a
+    /// 14 pt em 2,6 telas e o auto o preferia ao recorte.
+    static func maximumScale(_ doc: DocumentAnalysis, _ recipe: Recipe) -> CGFloat {
+        guard let x = EstimateMath.bodyXHeightPt(doc) else { return .infinity }
+        return CGFloat(Legibility.xHeightPt(fromMM: recipe.legibility.maximumMM)) / x
+    }
+
     static func run(_ id: StrategyID, _ doc: DocumentAnalysis, _ profile: ViewportProfile, _ recipe: Recipe) -> Run {
         let g = SliceGeometry(profile, recipe)
         return id == .columns ? columns(doc, profile, recipe, g) : flow(doc, profile, recipe, g)
@@ -82,7 +90,8 @@ enum SlicePlanner {
             guard !inks.isEmpty else { continue }
             let refW = Stats.lowerPercentile(inks.map(\.width), recipe.referencePercentile)
             let left = Stats.median(inks.map(\.minX))
-            let nominal = refW > 0 ? min(recipe.maxScale, g.usableWidth / refW) : recipe.maxScale
+            let cap = min(recipe.maxScale, maximumScale(doc, recipe))
+            let nominal = refW > 0 ? min(cap, g.usableWidth / refW) : cap
             for pos in members {
                 let units = SliceUnits.flow(doc.pages[pos])
                 guard !units.isEmpty else { continue }
@@ -239,7 +248,8 @@ enum SlicePlanner {
         // §15.2.2: pior trecho do corpo, não só a mediana (seção reduzida, exceção).
         var worst = est.bodyXHeightMM
         if let body = EstimateMath.bodyXHeightPt(doc) {
-            for rec in r.result.records where rec.isBody && rec.textLines > 0 {
+            // Texto do tamanho do corpo fora do fluxo principal (resumo largo no E5) também avisa.
+            for rec in r.result.records where (rec.isBody && rec.textLines > 0) || rec.bodySized {
                 let mm = Legibility.finalXHeightMM(sourceXHeightPt: Double(body), scale: Double(rec.scale))
                 worst = min(worst ?? mm, mm)
             }

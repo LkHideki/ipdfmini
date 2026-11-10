@@ -7,6 +7,7 @@ import MiniGeometry
 // S6 (OCR) e S7 (WebKit) ficam fora do `all`: rodam isolados (S6 leva ~3 min).
 if CommandLine.arguments.count >= 3, CommandLine.arguments[1] == "s6" { try S6.execute(outPath: CommandLine.arguments[2]); exit(0) }
 if CommandLine.arguments.count >= 3, CommandLine.arguments[1] == "s7" { S7.main(out: URL(fileURLWithPath: CommandLine.arguments[2])) }
+if CommandLine.arguments.count >= 3, CommandLine.arguments[1] == "s5" { try S5.execute(dir: CommandLine.arguments[2]); exit(0) }
 
 let args = CommandLine.arguments
 guard args.count >= 3, ["s1", "s2", "s3", "all"].contains(args[1]) else {
