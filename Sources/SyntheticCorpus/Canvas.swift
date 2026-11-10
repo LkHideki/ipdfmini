@@ -15,7 +15,21 @@ enum Face {
     static let helveticaName = "Helvetica"
     static let helveticaBoldName = "Helvetica-Bold"
 
-    static func make(_ name: String, _ size: CGFloat) -> CTFont { CTFontCreateWithName(name as CFString, size, nil) }
+    /// Fonte criada uma vez por (nome, corpo), sob lock. CTFontCreateWithName
+    /// concorrente travou o processo (threads presas no XPC do registro de
+    /// fontes, como no SPIKES.md S3) quando vários cenários eram gerados em
+    /// paralelo. CTFont é imutável: depois de criada, compartilhar é seguro.
+    static func make(_ name: String, _ size: CGFloat) -> CTFont {
+        let key = "\(name)@\(size)"
+        lock.lock()
+        defer { lock.unlock() }
+        if let f = cache[key] { return f }
+        let f = CTFontCreateWithName(name as CFString, size, nil)
+        cache[key] = f
+        return f
+    }
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var cache: [String: CTFont] = [:]
     static func times(_ s: CGFloat) -> CTFont { make(timesName, s) }
     static func timesBold(_ s: CGFloat) -> CTFont { make(timesBoldName, s) }
     static func timesItalic(_ s: CGFloat) -> CTFont { make(timesItalicName, s) }

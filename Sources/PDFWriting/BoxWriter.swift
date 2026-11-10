@@ -41,6 +41,7 @@ public struct BoxWriter: PDFWriter {
         var used = Set<Int>()
         var ordered: [PDFPage] = []
         var copies: [PDFPage] = []
+        var shifts: [ObjectIdentifier: CGPoint] = [:]
         for (i, out) in plan.pages.enumerated() {
             let placement = out.placements[0]
             let s = placement.sourcePage
@@ -58,6 +59,7 @@ public struct BoxWriter: PDFWriter {
             let box = geometry[s]!.toUser(placement.sourceRect)
             Self.setAllBoxes(of: page, to: box)
             ordered.append(page)
+            shifts[ObjectIdentifier(page)] = box.origin
 
             let aspectOut = out.sizePt.width / out.sizePt.height
             let aspectBox = placement.sourceRect.width / placement.sourceRect.height
@@ -65,6 +67,8 @@ public struct BoxWriter: PDFWriter {
             if error > 0.001 { warnings.append(.aspectMismatch(outputPage: i, relativeError: Double(error))) }
             if !out.overlays.isEmpty { warnings.append(.overlaysIgnored(count: out.overlays.count)) }
         }
+
+        Self.shiftDestinations(doc, pages: ordered, shifts: shifts)
 
         // Páginas fora do plano saem; de trás para frente para não deslocar índices.
         for s in stride(from: pageCount - 1, through: 0, by: -1) where !used.contains(s) {
@@ -144,6 +148,49 @@ public struct BoxWriter: PDFWriter {
         page.setBounds(rect, for: .mediaBox)
         for box in [PDFDisplayBox.cropBox, .trimBox, .bleedBox, .artBox] {
             page.setBounds(rect, for: box)
+        }
+    }
+
+    /// Na gravação o PDFKit leva a origem da MediaBox para (0,0) e translada
+    /// conteúdo, caixas e retângulos de anotação, mas não os pontos de destino
+    /// (`/XYZ x y`) do sumário e dos links (SPIKES.md, S2; medido no corpus
+    /// `navigation`: destinos deslocados pela origem da janela). Aplica-se aqui a
+    /// mesma translação da página de destino. Se uma versão futura do PDFKit
+    /// passar a transladar, o invariante 5 da validação acusa o deslocamento em dobro.
+    static func shiftDestinations(_ doc: PDFDocument, pages: [PDFPage], shifts: [ObjectIdentifier: CGPoint]) {
+        func shifted(_ d: PDFDestination?) -> PDFDestination? {
+            guard let d, let page = d.page, let s = shifts[ObjectIdentifier(page)], s != .zero else { return nil }
+            let u = kPDFDestinationUnspecifiedValue
+            var p = d.point
+            // coordenada livre (o leitor mantém a atual) fica livre
+            // 0,01 pt basta (o PDFKit grava até 6 dígitos; cada destino cresceria ~10 bytes)
+            func r(_ v: CGFloat) -> CGFloat { (v * 100).rounded() / 100 }
+            if abs(p.x) < u / 2 { p.x = r(p.x - s.x) }
+            if abs(p.y) < u / 2 { p.y = r(p.y - s.y) }
+            let n = PDFDestination(page: page, at: p)
+            n.zoom = d.zoom
+            return n
+        }
+        func walk(_ o: PDFOutline) {
+            for i in 0..<o.numberOfChildren {
+                guard let c = o.child(at: i) else { continue }
+                if let n = shifted(c.destination) {
+                    c.destination = n
+                } else if let n = shifted((c.action as? PDFActionGoTo)?.destination) {
+                    c.action = PDFActionGoTo(destination: n)
+                }
+                walk(c)
+            }
+        }
+        if let root = doc.outlineRoot { walk(root) }
+        for page in pages {
+            for a in page.annotations where a.type == "Link" {
+                if let n = shifted(a.destination) {
+                    a.destination = n
+                } else if let n = shifted((a.action as? PDFActionGoTo)?.destination) {
+                    a.action = PDFActionGoTo(destination: n)
+                }
+            }
         }
     }
 

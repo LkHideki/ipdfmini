@@ -16,10 +16,13 @@ public struct DocumentAnalyzer: Sendable {
         public var pixelsPerPoint: CGFloat
         /// Tarefas simultâneas; `nil` = núcleos de desempenho.
         public var maxConcurrency: Int?
+        /// Senha de usuário de PDF criptografado; `nil` tenta só a senha vazia.
+        public var password: String?
 
-        public init(pixelsPerPoint: CGFloat = 2, maxConcurrency: Int? = nil) {
+        public init(pixelsPerPoint: CGFloat = 2, maxConcurrency: Int? = nil, password: String? = nil) {
             self.pixelsPerPoint = pixelsPerPoint
             self.maxConcurrency = maxConcurrency
+            self.password = password
         }
     }
 
@@ -36,7 +39,8 @@ public struct DocumentAnalyzer: Sendable {
 
     public func analyze(data: Data) async throws -> DocumentAnalysis {
         let sha = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-        let probe = try Self.open(data)
+        let password = options.password
+        let probe = try Self.open(data, password: password)
         let count = probe.pageCount
         let title = probe.documentAttributes?[PDFDocumentAttribute.titleAttribute] as? String
         let author = probe.documentAttributes?[PDFDocumentAttribute.authorAttribute] as? String
@@ -49,7 +53,7 @@ public struct DocumentAnalyzer: Sendable {
                 group.addTask {
                     // cada tarefa abre a própria instância: PDFDocument/CGPDFDocument
                     // não são seguros entre threads
-                    let doc = try Self.open(data)
+                    let doc = try Self.open(data, password: password)
                     var out: [PageWork] = []
                     // distribuição intercalada: equilibra páginas pesadas sem fila compartilhada
                     for i in stride(from: w, to: count, by: workers) {
@@ -74,10 +78,10 @@ public struct DocumentAnalyzer: Sendable {
                                 title: title, author: author)
     }
 
-    private static func open(_ data: Data) throws -> PDFDocument {
+    private static func open(_ data: Data, password: String?) throws -> PDFDocument {
         guard let doc = PDFDocument(data: data) else { throw AnalysisError.unreadable }
         // só senha de dono (permissões) abre com senha vazia
-        if doc.isLocked && !doc.unlock(withPassword: "") { throw AnalysisError.locked }
+        if doc.isLocked && !doc.unlock(withPassword: password ?? "") { throw AnalysisError.locked }
         return doc
     }
 

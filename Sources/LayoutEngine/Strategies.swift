@@ -127,8 +127,20 @@ enum EstimateMath {
     static func finish(_ id: StrategyID, _ doc: DocumentAnalysis, _ profile: ViewportProfile, _ recipe: Recipe,
                        pages: [OutputPage], warnings: [PlanWarning], estimate: Estimate) -> LayoutPlan {
         var warnings = warnings
-        if let body = estimate.bodyXHeightMM, body < recipe.legibility.minimumMM {
-            warnings.append(.belowMinimumLegibility(xHeightMM: body))
+        // Pior página com tinta, não só a classe dominante: outra classe de tamanho
+        // (prancha em paisagem, página girada) ou uma exceção pode ficar abaixo do
+        // mínimo com a dominante acima, e o §15.2.2 exige o aviso nesse caso.
+        var worst = estimate.bodyXHeightMM
+        if let body = bodyXHeightPt(doc) {
+            for out in pages {
+                guard let p = out.placements.first, doc.pages.indices.contains(p.sourcePage),
+                      doc.pages[p.sourcePage].usableInk != nil else { continue }
+                let mm = Legibility.finalXHeightMM(sourceXHeightPt: Double(body), scale: Double(p.scale))
+                worst = min(worst ?? mm, mm)
+            }
+        }
+        if let mm = worst, mm < recipe.legibility.minimumMM {
+            warnings.append(.belowMinimumLegibility(xHeightMM: mm))
         }
         var r = recipe
         r.strategy = id

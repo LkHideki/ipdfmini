@@ -29,6 +29,7 @@ let package = Package(
         .testTarget(name: "LayoutEngineTests", dependencies: ["LayoutEngine"]),
         .testTarget(name: "PDFWritingTests", dependencies: ["PDFWriting", "SyntheticCorpus"]),
         .testTarget(name: "SyntheticCorpusTests", dependencies: ["SyntheticCorpus"]),
-        .testTarget(name: "MiniKitTests", dependencies: ["MiniKit", "SyntheticCorpus"]),
+        // ipdfmini-cli: o aceite do M1 roda `convert` pela própria CLI (executável testável).
+        .testTarget(name: "MiniKitTests", dependencies: ["MiniKit", "SyntheticCorpus", "ipdfmini-cli"]),
     ]
 )

@@ -41,7 +41,7 @@ public struct WriteOptions: Sendable, Equatable {
     }
 }
 
-public enum WriteWarning: Sendable, Equatable {
+public enum WriteWarning: Codable, Sendable, Equatable {
     /// A janela gravada não tem a proporção de `OutputPage.sizePt`.
     case aspectMismatch(outputPage: Int, relativeError: Double)
     /// Saída maior que 1,1× a origem (meta da §9.3).
@@ -52,7 +52,7 @@ public enum WriteWarning: Sendable, Equatable {
     case producerNotApplied
 }
 
-public struct WriteReport: Sendable, Equatable {
+public struct WriteReport: Codable, Sendable, Equatable {
     public var outputPageCount: Int
     public var bytes: Int64
     public var warnings: [WriteWarning]

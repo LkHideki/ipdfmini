@@ -231,10 +231,25 @@ public enum CalibrationPDF {
         }
     }
 
+    /// Uma criação por (nome, corpo), sob lock: CTFontCreateWithName concorrente
+    /// pode travar no XPC do registro de fontes (SPIKES.md S3), e o app/testes
+    /// podem gerar o PDF de calibração em paralelo.
+    private static func cachedFont(_ name: String, _ size: CGFloat) -> CTFont {
+        let key = "\(name)@\(size)"
+        fontLock.lock()
+        defer { fontLock.unlock() }
+        if let f = fontCache[key] { return f }
+        let f = CTFontCreateWithName(name as CFString, size, nil)
+        fontCache[key] = f
+        return f
+    }
+    private static let fontLock = NSLock()
+    nonisolated(unsafe) private static var fontCache: [String: CTFont] = [:]
+
     /// `anchor`: 0 = ponto é o início do texto, 0,5 = centro.
     private static func drawText(_ s: String, at p: CGPoint, size: CGFloat, color: CGColor, angle: CGFloat,
                                  font fontName: String, anchor: CGFloat = 0, ctx: CGContext) {
-        let font = CTFontCreateWithName(fontName as CFString, size, nil)
+        let font = cachedFont(fontName, size)
         let attrs: [CFString: Any] = [kCTFontAttributeName: font, kCTForegroundColorAttributeName: color]
         let line = CTLineCreateWithAttributedString(NSAttributedString(string: s, attributes: attrs as [NSAttributedString.Key: Any]))
         let width = CTLineGetTypographicBounds(line, nil, nil, nil)

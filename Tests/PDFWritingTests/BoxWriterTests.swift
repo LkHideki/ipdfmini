@@ -91,7 +91,12 @@ private func words(_ s: String?) -> [String] {
 
         let w = TestPDF.window(x: 100, y: 80, width: 300)               // página: x 100…400, y 80…536,86
         let report = try await env.write(TestPDF.plan([(0, w)]))
-        #expect(report.warnings.isEmpty)
+        // Arquivo de ~5 KB: o custo fixo do deslocamento de origem por página (ver
+        // originShiftOverheadIsSmallAndConstantPerPage) já o deixava logo abaixo de 1,1×, e o
+        // destino do link regravado em coordenadas deslocadas soma ~10 bytes, cruzando
+        // 1,1×. O orçamento de tamanho é provado em inPlaceOutputStaysWithinSizeBudget;
+        // aqui só nenhum outro aviso pode aparecer.
+        #expect(report.warnings.filter { if case .sizeBudgetExceeded = $0 { false } else { true } }.isEmpty)
 
         let expectedUser = CGRect(x: 600 - w.maxY, y: 120, width: w.height, height: w.width)
         expectBoxes(env.out, page: 0, size: expectedUser.size)

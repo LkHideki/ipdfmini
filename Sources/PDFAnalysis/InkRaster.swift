@@ -7,11 +7,12 @@ import PDFKit
 // escalar em build de debug custa ~100 ns/pixel (2 M pixels por página A4).
 
 /// Raster cinza 8 bits da área visível, em espaço de página. PLAN.md §5.3.
-struct GrayRaster {
-    let mapping: RasterMapping
-    let width: Int
-    let height: Int
-    var pixels: [UInt8]
+/// Público para a validação (MiniKit) medir tinta com o mesmo render da análise.
+public struct GrayRaster {
+    public let mapping: RasterMapping
+    public let width: Int
+    public let height: Int
+    public var pixels: [UInt8]
 
     /// Teto de pixels: páginas gigantes (até 14400 pt) baixam a resolução.
     static let maxPixels = 24_000_000
@@ -20,7 +21,11 @@ struct GrayRaster {
     /// `/Rotate` (`CGContext.drawPDFPage` ignora anotações). O PDFKit aplica
     /// internamente `transform(for:)`; desfazê-lo e aplicar
     /// `PageGeometry.userToPage` mantém um único caminho de conversão.
-    static func render(page: PDFPage, geometry: PageGeometry, pixelsPerPoint: CGFloat) -> GrayRaster? {
+    /// `clip` (espaço do usuário) restringe o desenho dentro de `geometry.pageBox`;
+    /// `nil` = `geometry.effectiveBox`. A validação usa para renderizar uma janela
+    /// que passa da área visível sem revelar o que a CropBox esconde.
+    public static func render(page: PDFPage, geometry: PageGeometry, pixelsPerPoint: CGFloat,
+                              clip: CGRect? = nil) -> GrayRaster? {
         let box = geometry.pageBox
         guard box.width > 0, box.height > 0 else { return nil }
         var s = pixelsPerPoint
@@ -38,7 +43,7 @@ struct GrayRaster {
             ctx.setAllowsFontSubpixelQuantization(false)
             ctx.setShouldSubpixelQuantizeFonts(false)
             ctx.concatenate(geometry.userToPage.concatenating(mapping.pageToContext))
-            ctx.clip(to: geometry.effectiveBox)
+            ctx.clip(to: clip ?? geometry.effectiveBox)
             ctx.concatenate(page.transform(for: .cropBox).inverted())
             page.draw(with: .cropBox, to: ctx)
             return true
@@ -46,7 +51,7 @@ struct GrayRaster {
         return ok ? GrayRaster(mapping: mapping, width: w, height: h, pixels: pixels) : nil
     }
 
-    func histogram() -> [Int] {
+    public func histogram() -> [Int] {
         var hist = [vImagePixelCount](repeating: 0, count: 256)
         var pixels = pixels
         pixels.withUnsafeMutableBytes { buf in
@@ -77,20 +82,20 @@ struct GrayRaster {
 }
 
 /// Máscara de tinta (1 = tinta) em Float, para os perfis saírem do vDSP.
-struct InkMask {
-    let width: Int
-    let height: Int
-    var values: [Float]
-    let background: Int
+public struct InkMask {
+    public let width: Int
+    public let height: Int
+    public internal(set) var values: [Float]
+    public let background: Int
 
     /// Vetor: diferença fixa em relação ao fundo; cobre fundos não brancos.
-    static func vector(_ r: GrayRaster, background bg: Int, delta: Int = 20) -> InkMask {
+    public static func vector(_ r: GrayRaster, background bg: Int, delta: Int = 20) -> InkMask {
         let lut = (0..<256).map { UInt8(abs($0 - bg) > delta ? 1 : 0) }
         return InkMask(width: r.width, height: r.height, values: r.lookup(lut), background: bg)
     }
 
     /// Scan: Otsu global. M4 troca por Sauvola (papel não uniforme, §5.3 passo 2).
-    static func scan(_ r: GrayRaster, histogram: [Int], background bg: Int, minContrast: Int = 40) -> InkMask {
+    public static func scan(_ r: GrayRaster, histogram: [Int], background bg: Int, minContrast: Int = 40) -> InkMask {
         let t = otsu(histogram)
         // contraste mínimo: página de papel limpo não vira "tinta" pelo Otsu
         let darkInk = bg > t
@@ -99,7 +104,7 @@ struct InkMask {
         return InkMask(width: r.width, height: r.height, values: r.lookup(lut), background: bg)
     }
 
-    static func mode(_ h: [Int]) -> Int { h.indices.max { h[$0] < h[$1] } ?? 255 }
+    public static func mode(_ h: [Int]) -> Int { h.indices.max { h[$0] < h[$1] } ?? 255 }
 
     static func otsu(_ h: [Int]) -> Int {
         let total = Double(h.reduce(0, +))
@@ -121,7 +126,7 @@ struct InkMask {
     }
 
     /// Zera a máscara num retângulo de pixels (inclusivo-exclusivo).
-    mutating func clear(x0: Int, y0: Int, x1: Int, y1: Int) {
+    public mutating func clear(x0: Int, y0: Int, x1: Int, y1: Int) {
         let x0 = max(0, x0), y0 = max(0, y0), x1 = min(width, x1), y1 = min(height, y1)
         guard x0 < x1, y0 < y1 else { return }
         let w = width
@@ -176,7 +181,7 @@ struct InkMask {
     /// Remove componentes (8-conexos) que tocam a borda e são alongados
     /// (faixa de scanner, sombra de lombada) e salpicos com área < `minArea`.
     /// Furos de fichário ficam para o M4.
-    mutating func clean(minArea: Int) {
+    public mutating func clean(minArea: Int) {
         let w = width, h = height
         var labels = [Int32](repeating: 0, count: w * h)
         var comps: [Component] = []
