@@ -72,6 +72,7 @@ public struct DocumentAnalyzer: Sendable {
         }
         var pages = works.enumerated().map { $0.element ?? Self.unreadablePage($0.offset) }
         HeaderFooter.detect(&pages)
+        for i in pages.indices { pages[i].analysis.bodyInkBox = BodyInk.box(pages[i]) }
         return DocumentAnalysis(sha256: sha, pageCount: count, pages: pages.map(\.analysis),
                                 kind: DocumentClassifier.classify(pages),
                                 bodyXHeightPt: XHeightStats.modes(pages.flatMap(\.samples))?.body,

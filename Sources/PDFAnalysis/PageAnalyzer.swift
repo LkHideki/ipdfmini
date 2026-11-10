@@ -11,6 +11,8 @@ struct PageWork: Sendable, Equatable {
     var columns: Int
     var imageCoverage: Double
     var samples: [XHeightSample]
+    /// Extensão horizontal da tinta por linha de pixel, para a caixa sem cabeçalho/rodapé.
+    var inkRows: InkRows? = nil
 }
 
 /// Análise de uma página. PLAN.md §5.1–§5.5.
@@ -22,10 +24,22 @@ enum PageAnalyzer {
         /// letras de base reta: dão a altura-x pelo contorno dos glifos.
         var xLetters: [CGRect] = []
         var flatBottoms: [CGRect] = []
+        /// Topos planos: `xTops` (x, v, w) e `flatTops` (u v w x y z).
+        var xTops: [CGRect] = []
+        var flatTops: [CGRect] = []
     }
 
     static let xHeightLetters = Set("acegmnopqrsuvwxyz")
     static let flatBottomLetters = Set("hiklmnrxzABDEFHIKLMNPRTXZ")
+    /// Letras redondas (a c e o s…) passam da linha x por compensação óptica; com
+    /// elas na mediana dos topos a altura-x saía ~3% alta no corpus (Times).
+    /// A altura-x da fonte (OS/2 sxHeight) é por definição o topo do "x"; em
+    /// Helvetica u, y e z sobem 2,4% acima dele (medido no CoreText), v e w não.
+    /// Ordem: x/v/w (1 basta: `characterBounds` é exato no contorno, S3), depois
+    /// u–z (≥ 3), depois todas as minúsculas de altura-x.
+    static let xTopLetters = Set("vwx")
+    static let flatTopLetters = Set("uvwxyz")
+    static let minFlatTops = 3
     /// Discordância máxima glifo × tinta antes de preferir a tinta.
     static let glyphInkTolerance: CGFloat = 0.25
 
@@ -185,13 +199,16 @@ enum PageAnalyzer {
         else { kind = .mixed }   // texto + imagens grandes, ou só vetor/imagem parcial
 
         let columns = inkPx.map { countColumns(cols: cols, box: $0, s: s) } ?? 0
+        let inkRows = inkPx.map { _ in
+            InkRows(mask: mask, rows: rows, k: k, mapping: map, g0: g0, g: g, clip: effectivePage0)
+        }
         let modes = XHeightStats.modes(samples)
         let analysis = PageAnalysis(index: index, boxes: boxes, geometry: g, kind: kind,
                                     inkBox: inkPage0.map(toFinal), lines: lines.map(\.line), blocks: [],
                                     bodyXHeightPt: modes?.body, smallestXHeightPt: modes?.smallest,
                                     warnings: warnings)
         return PageWork(analysis: analysis, lineTexts: lines.map(\.text), columns: columns,
-                        imageCoverage: imageCoverage, samples: samples)
+                        imageCoverage: imageCoverage, samples: samples, inkRows: inkRows)
     }
 
     /// Linhas de `selectionsByLine` (caixa tipográfica, não tinta).
@@ -236,20 +253,28 @@ enum PageAnalyzer {
                 guard !b.isEmpty, guardRect.contains(b) else { continue }
                 if isX { line.xLetters.append(b) }
                 if isFlat { line.flatBottoms.append(b) }
+                if flatTopLetters.contains(c) { line.flatTops.append(b) }
+                if xTopLetters.contains(c) { line.xTops.append(b) }
             }
             return line
         }
     }
 
     /// Altura-x e linha de base (espaço de página de `g0`) pelos glifos:
-    /// mediana dos topos das minúsculas menos mediana das bases retas.
+    /// mediana dos topos das minúsculas de topo plano (ou de todas, se a linha
+    /// tem poucas) menos mediana das bases retas.
     static func glyphXHeight(_ l: TextLine, _ g0: PageGeometry) -> (xHeight: CGFloat, baseline: CGFloat)? {
         guard l.xLetters.count >= 3, l.flatBottoms.count >= 2 else { return nil }
         func median(_ v: [CGFloat]) -> CGFloat { let s = v.sorted(); return s[s.count / 2] }
-        let top = median(l.xLetters.map { g0.toPage($0).maxY })
-        let base = median(l.flatBottoms.map { g0.toPage($0).minY })
+        let tops = !l.xTops.isEmpty ? l.xTops : l.flatTops.count >= minFlatTops ? l.flatTops : l.xLetters
+        // Topo e base no espaço do usuário, onde o texto está em pé: em página
+        // com /Rotate 180 o espaço de página inverte topo e base, a medida dava
+        // negativa e caía no raster (~+5% a 2 px/pt).
+        let top = median(tops.map(\.maxY))
+        let base = median(l.flatBottoms.map(\.minY))
         let xh = top - base
-        return xh > 0.5 ? (xh, base) : nil
+        guard xh > 0.5 else { return nil }
+        return (xh, g0.toPage(CGPoint(x: l.userRect.midX, y: base)).y)
     }
 
     /// Colunas por vale vertical simples (M1); o XY-cut do M3 substitui.

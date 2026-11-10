@@ -16,12 +16,15 @@ public enum ConversionMode: String, Codable, Sendable, CaseIterable {
     case crop
     /// Força E0.
     case passthrough
+    /// Força E2 (recorte sem cabeçalho/rodapé), mesmo com `removeHeaderFooter` desligado.
+    case aggressiveCrop = "aggressive"
 
     var forcedStrategy: StrategyID? {
         switch self {
         case .auto: nil
         case .crop: .crop
         case .passthrough: .passthrough
+        case .aggressiveCrop: .aggressiveCrop
         }
     }
 }
@@ -33,15 +36,20 @@ public struct ConversionOptions: Sendable, Equatable {
     public var recipe: Recipe
     /// Senha de usuário do PDF de origem.
     public var password: String?
+    /// Permite ao modo auto remover cabeçalho, rodapé e número de página (E2).
+    /// Desligado por padrão: confundir nota de rodapé com rodapé apaga conteúdo (§18, R5).
+    public var removeHeaderFooter: Bool
     public var writeOptions: WriteOptions
     public var validate: Bool
 
     public init(profile: ViewportProfile = .booksPortrait, mode: ConversionMode = .auto, recipe: Recipe = Recipe(),
-                password: String? = nil, writeOptions: WriteOptions = WriteOptions(), validate: Bool = true) {
+                password: String? = nil, removeHeaderFooter: Bool = false, writeOptions: WriteOptions = WriteOptions(),
+                validate: Bool = true) {
         self.profile = profile
         self.mode = mode
         self.recipe = recipe
         self.password = password
+        self.removeHeaderFooter = removeHeaderFooter
         self.writeOptions = writeOptions
         self.validate = validate
     }
@@ -69,8 +77,12 @@ public struct Converter: Sendable {
         self.validator = validator
     }
 
-    /// Estratégias do M1 (E0 e E1).
-    static let strategies: [any AdaptationStrategy] = [PassthroughStrategy(), CropStrategy()]
+    /// E0 e E1 sempre; E2 só com a remoção pedida (opção ou modo forçado).
+    static func strategies(_ o: ConversionOptions) -> [any AdaptationStrategy] {
+        var s: [any AdaptationStrategy] = [PassthroughStrategy(), CropStrategy()]
+        if o.removeHeaderFooter || o.mode == .aggressiveCrop { s.append(AggressiveCropStrategy()) }
+        return s
+    }
 
     public func analyze(input: URL, password: String? = nil) async throws -> DocumentAnalysis {
         var o = analyzerOptions
@@ -86,7 +98,11 @@ public struct Converter: Sendable {
     /// Replaneja sem reanalisar (pré-visualização, §16).
     public func plan(analysis doc: DocumentAnalysis, options: ConversionOptions) throws -> PlanResult {
         // A tabela de candidatos sai sempre completa; o modo só fixa o escolhido.
-        let engine = DecisionEngine(strategies: Self.strategies, profiles: [options.profile])
+        let strategies = Self.strategies(options)
+        // Remoção pedida: tirar cabeçalho/rodapé não conta como perda de fidelidade,
+        // E2 empata com E1 e vence quando rende corpo maior.
+        let overrides: [StrategyID: Int] = options.removeHeaderFooter ? [.aggressiveCrop: StrategyID.crop.fidelityCost] : [:]
+        let engine = DecisionEngine(strategies: strategies, profiles: [options.profile], costOverrides: overrides)
         guard let decision = engine.decide(doc, recipe: options.recipe) else { throw ConversionError.noCandidate }
         let chosenIndex: Int
         if let forced = options.mode.forcedStrategy {
@@ -98,7 +114,7 @@ public struct Converter: Sendable {
             chosenIndex = 0
         }
         let chosen = decision.candidates[chosenIndex]
-        guard let strategy = Self.strategies.first(where: { $0.id == chosen.strategy }) else {
+        guard let strategy = strategies.first(where: { $0.id == chosen.strategy }) else {
             throw ConversionError.strategyUnavailable(chosen.strategy)
         }
         var recipe = options.recipe

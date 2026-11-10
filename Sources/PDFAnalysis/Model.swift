@@ -79,6 +79,9 @@ public struct PageAnalysis: Codable, Sendable, Equatable {
     public var kind: PageKind
     /// Caixa de tinta em espaço de página; `nil` se a página está vazia.
     public var inkBox: CGRect?
+    /// Tinta sem os blocos `.headerFooter` (raster, apertada); base do E2.
+    /// `nil` = nada de cabeçalho/rodapé detectado (ou só ele na página): use `inkBox`.
+    public var bodyInkBox: CGRect?
     /// Linhas de texto detectadas, de cima para baixo.
     public var lines: [Line]
     /// Blocos em ordem de leitura (M1 pode deixar vazio; M3 preenche).
@@ -91,7 +94,7 @@ public struct PageAnalysis: Codable, Sendable, Equatable {
 
     public init(index: Int, boxes: PageBoxes, geometry: PageGeometry, kind: PageKind, inkBox: CGRect?,
                 lines: [Line] = [], blocks: [Block] = [], bodyXHeightPt: CGFloat? = nil,
-                smallestXHeightPt: CGFloat? = nil, warnings: [AnalysisWarning] = []) {
+                smallestXHeightPt: CGFloat? = nil, warnings: [AnalysisWarning] = [], bodyInkBox: CGRect? = nil) {
         self.index = index
         self.boxes = boxes
         self.geometry = geometry
@@ -102,10 +105,23 @@ public struct PageAnalysis: Codable, Sendable, Equatable {
         self.bodyXHeightPt = bodyXHeightPt
         self.smallestXHeightPt = smallestXHeightPt
         self.warnings = warnings
+        self.bodyInkBox = bodyInkBox
     }
 
     /// Caixa efetiva em espaço de página.
     public var pageBox: CGRect { geometry.pageBox }
+
+    /// Folga em volta da caixa tipográfica de um bloco removido (antialiasing).
+    public static let removedBlockMarginPt: CGFloat = 1
+
+    /// Blocos `.headerFooter` que ficaram fora de `bodyInkBox`, ou seja, o que o
+    /// E2 remove; com `removedBlockMarginPt` de folga. Bloco colado no corpo (que
+    /// `bodyInkBox` manteve) tem o centro dentro da faixa vertical do corpo e fica.
+    public var removedHeaderFooter: [CGRect] {
+        guard let body = bodyInkBox else { return [] }
+        return blocks.filter { $0.type == .headerFooter && ($0.rect.midY > body.maxY || $0.rect.midY < body.minY) }
+            .map { $0.rect.insetBy(dx: -Self.removedBlockMarginPt, dy: -Self.removedBlockMarginPt) }
+    }
 }
 
 public struct DocumentAnalysis: Codable, Sendable, Equatable {

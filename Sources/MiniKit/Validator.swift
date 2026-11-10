@@ -249,6 +249,13 @@ public struct Validator: Sendable {
                 mask.clear(x0: r.x0, y0: r.y0, x1: r.x1, y1: r.y1)
             }
         }
+        // E2: cabeçalho/rodapé removido é descarte pedido, como as regiões ignoradas.
+        if plan.recipe.strategy == .aggressiveCrop {
+            for region in a.removedHeaderFooter {
+                let r = map.pixelRect(toG0(region))
+                mask.clear(x0: r.x0, y0: r.y0, x1: r.x1, y1: r.y1)
+            }
+        }
         let left = Ink.sum(mask)
         var box: CGRect?
         if left > 0, let b = Ink.bounds(mask) {

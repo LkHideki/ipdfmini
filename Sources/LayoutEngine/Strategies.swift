@@ -56,10 +56,43 @@ public struct CropStrategy: AdaptationStrategy {
     public init() {}
 
     public func estimate(_ doc: DocumentAnalysis, _ profile: ViewportProfile, _ recipe: Recipe) -> Estimate {
-        estimate(doc, profile, recipe, layout: CropLayoutEngine.compute(doc, profile, recipe))
+        CropPlanner.estimate(id, doc, profile, recipe, layout: CropLayoutEngine.compute(doc, profile, recipe))
     }
 
-    func estimate(_ doc: DocumentAnalysis, _ profile: ViewportProfile, _ recipe: Recipe, layout: CropLayout) -> Estimate {
+    public func plan(_ doc: DocumentAnalysis, _ profile: ViewportProfile, _ recipe: Recipe) -> LayoutPlan {
+        CropPlanner.plan(id, doc, profile, recipe, layout: CropLayoutEngine.compute(doc, profile, recipe))
+    }
+}
+
+/// E2 — recorte agressivo: E1 sem cabeçalho, rodapé e número de página. PLAN.md §7.
+///
+/// Mesmo motor do E1 sobre `bodyInkBox ?? inkBox`; bloco removido nunca fica
+/// parcialmente dentro da janela (ver `CropFrame.avoiding`). O §7 pede o número
+/// da página original como overlay discreto, mas o BoxWriter não desenha
+/// overlays (`WriteWarning.overlaysIgnored`): não é emitido até o PlacementWriter (M3).
+public struct AggressiveCropStrategy: AdaptationStrategy {
+    public var id: StrategyID { .aggressiveCrop }
+    public init() {}
+
+    public func estimate(_ doc: DocumentAnalysis, _ profile: ViewportProfile, _ recipe: Recipe) -> Estimate {
+        let layout = CropLayoutEngine.compute(doc, profile, recipe, removeHeaderFooter: true)
+        return CropPlanner.estimate(id, doc, profile, recipe, layout: layout, removing: Self.removingPages(doc))
+    }
+
+    public func plan(_ doc: DocumentAnalysis, _ profile: ViewportProfile, _ recipe: Recipe) -> LayoutPlan {
+        let layout = CropLayoutEngine.compute(doc, profile, recipe, removeHeaderFooter: true)
+        return CropPlanner.plan(id, doc, profile, recipe, layout: layout, removing: Self.removingPages(doc))
+    }
+
+    static func removingPages(_ doc: DocumentAnalysis) -> Int {
+        doc.pages.count { $0.usableBodyInk != nil && !$0.removedHeaderFooter.isEmpty }
+    }
+}
+
+/// Estimativa e plano comuns a E1 e E2.
+enum CropPlanner {
+    static func estimate(_ id: StrategyID, _ doc: DocumentAnalysis, _ profile: ViewportProfile, _ recipe: Recipe,
+                         layout: CropLayout, removing: Int? = nil) -> Estimate {
         var risks: [String] = []
         let inkPages = layout.inkCounts.reduce(0, +)
         let exceptions = layout.exceptionCount
@@ -67,11 +100,15 @@ public struct CropStrategy: AdaptationStrategy {
         if exceptions > 0, Double(exceptions) > EstimateMath.manyExceptionsFraction * Double(inkPages) {
             risks.append("muitas exceções de escala: \(exceptions) de \(inkPages) páginas")
         }
+        if let removing {
+            risks.append(removing == 0 ? "nenhum cabeçalho/rodapé detectado: igual ao recorte"
+                                       : "remove cabeçalho/rodapé em \(removing) de \(doc.pages.count) páginas")
+        }
         return EstimateMath.make(id, profile, doc, scale: layout.dominantScale, risks: risks)
     }
 
-    public func plan(_ doc: DocumentAnalysis, _ profile: ViewportProfile, _ recipe: Recipe) -> LayoutPlan {
-        let layout = CropLayoutEngine.compute(doc, profile, recipe)
+    static func plan(_ id: StrategyID, _ doc: DocumentAnalysis, _ profile: ViewportProfile, _ recipe: Recipe,
+                     layout: CropLayout, removing: Int? = nil) -> LayoutPlan {
         var warnings: [PlanWarning] = []
         let pages = layout.windows.map { w -> OutputPage in
             let page = doc.pages[w.position]
@@ -89,7 +126,7 @@ public struct CropStrategy: AdaptationStrategy {
             ])
         }
         return EstimateMath.finish(id, doc, profile, recipe, pages: pages, warnings: warnings,
-                                   estimate: estimate(doc, profile, recipe, layout: layout))
+                                   estimate: estimate(id, doc, profile, recipe, layout: layout, removing: removing))
     }
 }
 

@@ -51,11 +51,17 @@ enum PageClassifier {
 }
 
 enum Stats {
+    /// Abaixo disto a classe não tem amostra para chamar uma página de outlier:
+    /// vale o máximo. Com o posto inferior, numa classe de 2 páginas a menor
+    /// mancha virava referência e a página cheia, exceção.
+    static let minimumPercentileSample = 5
+
     /// Percentil pelo posto inferior (sem interpolação): com uma página larga
     /// entre 20, o p95 interpolado já encolheria as outras 19.
     static func lowerPercentile(_ values: [CGFloat], _ p: Double) -> CGFloat {
         precondition(!values.isEmpty)
         let sorted = values.sorted()
+        if sorted.count < minimumPercentileSample { return sorted[sorted.count - 1] }
         let q = min(max(p, 0), 1)
         let i = Int((q * Double(sorted.count - 1)).rounded(.down))
         return sorted[i]
@@ -73,6 +79,13 @@ extension PageAnalysis {
     /// Caixa de tinta utilizável; `nil` para página vazia ou caixa degenerada.
     var usableInk: CGRect? {
         guard let r = inkBox?.standardized, !r.isNull, !r.isInfinite,
+              r.width.isFinite, r.height.isFinite else { return nil }
+        return r
+    }
+
+    /// Tinta do corpo (sem cabeçalho/rodapé) utilizável; `nil` se não houver.
+    var usableBodyInk: CGRect? {
+        guard let r = bodyInkBox?.standardized, !r.isNull, !r.isInfinite, !r.isEmpty,
               r.width.isFinite, r.height.isFinite else { return nil }
         return r
     }

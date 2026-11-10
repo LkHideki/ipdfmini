@@ -45,6 +45,16 @@ import Testing
         try await run(["analyze", try TestFiles.source(.scannedPage).path, "--json"])
     }
 
+    @Test func aggressiveModeAndRemoveHeadersExitZero() async throws {
+        let src = try TestFiles.source(.cropMarks)
+        try await run(["convert", src.path, "-o", TestFiles.url("cli.cropMarks.e2.pdf").path, "--mode", "aggressive"])
+        try await run(["convert", src.path, "-o", TestFiles.url("cli.cropMarks.auto.pdf").path, "--remove-headers"])
+        let c = try #require(try IPDFMini.parseAsRoot(["plan", "x.pdf", "--mode", "aggressive", "--remove-headers"]) as? Plan)
+        #expect(c.conversion.mode == .aggressiveCrop)
+        #expect(c.conversion.removeHeaders)
+        #expect(try c.conversion.options().removeHeaderFooter)
+    }
+
     @Test func modeAndClassArgumentsParse() throws {
         let c = try #require(try IPDFMini.parseAsRoot(["plan", "x.pdf", "--mode", "crop", "--class-mode", "bySize"]) as? Plan)
         #expect(c.conversion.mode == .crop)

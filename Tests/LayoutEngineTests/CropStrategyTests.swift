@@ -264,5 +264,8 @@ import PDFAnalysis
         #expect(PageClassifier.similar(CGSize(width: 432, height: 648), CGSize(width: 436, height: 654)))
         #expect(!PageClassifier.similar(CGSize(width: 432, height: 648), Fx.a4))
         #expect(Stats.lowerPercentile([1, 2, 3, 4, 5, 6, 7, 8, 9, 100], 0.95) == 9)
+        // classe pequena demais para descartar outlier: vale o máximo
+        #expect(Stats.lowerPercentile([300, 518], 0.95) == 518)
+        #expect(Stats.lowerPercentile([1, 2, 3, 100], 0.95) == 100)
     }
 }

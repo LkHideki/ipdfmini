@@ -86,8 +86,11 @@ struct ConversionArguments: ParsableArguments {
     @Option(help: ArgumentHelp("Perfil de viewport.", valueName: "id"))
     var profile: String = ViewportProfile.booksPortrait.id
 
-    @Option(help: "Estratégia: auto (motor de decisão), crop (E1) ou passthrough (E0).")
+    @Option(help: "Estratégia: auto (motor de decisão), crop (E1), aggressive (E2, sem cabeçalho/rodapé) ou passthrough (E0).")
     var mode: ConversionMode = .auto
+
+    @Flag(name: .customLong("remove-headers"), help: "Deixa o modo auto remover cabeçalho, rodapé e número de página (E2).")
+    var removeHeaders = false
 
     @Option(name: .customLong("margin-mm"), help: "Respiro em cada lado, em mm.")
     var marginMM: Double = 2
@@ -107,7 +110,7 @@ struct ConversionArguments: ParsableArguments {
         var recipe = Recipe()
         recipe.marginMM = marginMM
         recipe.classMode = classMode
-        return ConversionOptions(profile: p, mode: mode, recipe: recipe, password: password)
+        return ConversionOptions(profile: p, mode: mode, recipe: recipe, password: password, removeHeaderFooter: removeHeaders)
     }
 }
 

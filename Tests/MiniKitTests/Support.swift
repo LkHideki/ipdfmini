@@ -49,8 +49,8 @@ enum CorpusCache {
     }
 }
 
-/// Cenários de livro do aceite do M1.
-let bookScenarios: [Scenario] = [.book6x9, .mixedSizes, .offsetBoxes, .cropMarks, .rotatedPages, .arxivStamp, .navigation]
+/// Livros 6×9 do aceite do M1 (os demais cenários são Letter/A4).
+let bookScenarios: [Scenario] = [.book6x9, .mixedSizes, .cropMarks, .rotatedPages]
 
 struct Converted: Sendable {
     let scenario: Scenario
@@ -63,18 +63,21 @@ struct Converted: Sendable {
 /// Converte cada cenário uma vez só, compartilhado entre os testes.
 actor ConversionCache {
     static let shared = ConversionCache()
-    private var tasks: [Scenario: Task<Converted, Error>] = [:]
+    private var tasks: [String: Task<Converted, Error>] = [:]
     private var analyses: [Scenario: Task<DocumentAnalysis, Error>] = [:]
 
-    func converted(_ s: Scenario) async throws -> Converted {
-        if let t = tasks[s] { return try await t.value }
+    /// `removeHeaders`: `ConversionOptions.removeHeaderFooter` (modo auto).
+    func converted(_ s: Scenario, removeHeaders: Bool = false) async throws -> Converted {
+        let key = "\(s.rawValue)|\(removeHeaders)"
+        if let t = tasks[key] { return try await t.value }
         let t = Task {
             let src = try TestFiles.source(s)
-            let out = TestFiles.url("\(s.rawValue).mini.pdf")
-            let report = try await Converter().convert(input: src, output: out, options: ConversionOptions())
+            let out = TestFiles.url("\(s.rawValue).\(removeHeaders ? "e2" : "mini").pdf")
+            let report = try await Converter().convert(input: src, output: out,
+                                                       options: ConversionOptions(removeHeaderFooter: removeHeaders))
             return Converted(scenario: s, truth: CorpusCache.doc(s).truth, report: report, source: src, output: out)
         }
-        tasks[s] = t
+        tasks[key] = t
         return try await t.value
     }
 

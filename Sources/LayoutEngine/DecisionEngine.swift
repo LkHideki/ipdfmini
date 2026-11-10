@@ -41,11 +41,16 @@ public struct Decision: Sendable, Equatable {
 public struct DecisionEngine: Sendable {
     public var strategies: [any AdaptationStrategy]
     public var profiles: [ViewportProfile]
+    /// Custo de fidelidade substituto na regra, por estratégia. Uso: com a remoção
+    /// de cabeçalho/rodapé pedida pelo usuário, o E2 deixa de perder fidelidade em
+    /// relação ao que foi pedido e empata com o E1 (decide a legibilidade).
+    public var costOverrides: [StrategyID: Int]
 
     public init(strategies: [any AdaptationStrategy] = [PassthroughStrategy(), CropStrategy()],
-                profiles: [ViewportProfile] = [.booksPortrait]) {
+                profiles: [ViewportProfile] = [.booksPortrait], costOverrides: [StrategyID: Int] = [:]) {
         self.strategies = strategies
         self.profiles = profiles
+        self.costOverrides = costOverrides
     }
 
     /// `nil` se não houver estratégia ou perfil.
@@ -58,7 +63,7 @@ public struct DecisionEngine: Sendable {
                 all.append(Candidate(profile: p, estimate: s.estimate(doc, p, r)))
             }
         }
-        let ranked = Self.rank(all, legibility: recipe.legibility)
+        let ranked = Self.rank(all, legibility: recipe.legibility, costOverrides: costOverrides)
         guard let first = ranked.first else { return nil }
         return Decision(candidates: ranked, tier: LegibilityTier(first.estimate.bodyXHeightMM, recipe.legibility))
     }
@@ -81,11 +86,15 @@ public struct DecisionEngine: Sendable {
     /// Custo usado na regra. E0 e E1 só diferem por margem vazia (o recorte nunca
     /// corta tinta), então empatam; sem isso um livro 6×9 a 10 pt ficaria no E0 a
     /// 7,6 pt equivalentes, com o E1 a 9,4 pt disponível.
-    static func rankCost(_ e: Estimate) -> Int { max(e.fidelityCost, StrategyID.crop.fidelityCost) }
+    static func rankCost(_ e: Estimate, _ overrides: [StrategyID: Int] = [:]) -> Int {
+        max(overrides[e.strategy] ?? e.fidelityCost, StrategyID.crop.fidelityCost)
+    }
 
     /// Regra §8: menor custo de fidelidade com corpo ≥ alvo; senão menor custo com
     /// corpo ≥ mínimo; senão maior legibilidade. Empate: menos telas por página.
-    public static func rank(_ candidates: [Candidate], legibility: Legibility) -> [Candidate] {
+    public static func rank(_ candidates: [Candidate], legibility: Legibility,
+                            costOverrides: [StrategyID: Int] = [:]) -> [Candidate] {
+        func rankCost(_ e: Estimate) -> Int { Self.rankCost(e, costOverrides) }
         let keyed = candidates.enumerated().map { (i, c) in
             (i: i, c: c, tier: LegibilityTier(c.estimate.bodyXHeightMM, legibility))
         }

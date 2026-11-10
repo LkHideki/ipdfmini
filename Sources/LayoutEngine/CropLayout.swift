@@ -107,6 +107,34 @@ struct CropFrame: Sendable {
         }
     }
 
+    /// Janela deslocada na vertical o mínimo possível para que nenhum bloco
+    /// removido (E2) fique parcialmente dentro: inteiro fora ou, se a largura
+    /// permitir com os cantos livres, inteiro dentro. `nil` se nenhuma posição
+    /// mantém a tinta com o respiro mínimo. Cabeçalho cortado ao meio é pior que mantê-lo.
+    func avoiding(_ blocks: [CGRect], window w: CGRect, ink: CGRect, minMargin m: CGFloat) -> CGRect? {
+        let eps: CGFloat = 1e-6
+        let H = w.height
+        func partial(_ y: CGFloat) -> Bool {
+            let win = CGRect(x: w.minX, y: y, width: w.width, height: H)
+            return blocks.contains { b in
+                let i = win.intersection(b)
+                return !i.isNull && i.width > eps && i.height > eps && !win.insetBy(dx: -eps, dy: -eps).contains(b)
+            }
+        }
+        guard partial(w.minY) else { return w }
+        let cy = clearances(for: ink.size, minMargin: m)?.y ?? 0
+        var feasible = Intervals([(ink.maxY + cy - H, ink.minY - cy)])
+        if feasible.isEmpty { return nil }
+        for b in blocks where b.maxX > w.minX + eps && b.minX < w.maxX - eps {
+            var allowed = [(-CGFloat.infinity, b.minY - H), (b.maxY, CGFloat.infinity)]
+            if b.minX >= w.minX + cornerClear && b.maxX <= w.maxX - cornerClear { allowed.append((b.maxY - H, b.minY)) }
+            feasible = feasible.intersecting(Intervals(allowed))
+            if feasible.isEmpty { return nil }
+        }
+        guard let y = feasible.closest(to: w.minY), !partial(y) else { return nil }
+        return CGRect(x: w.minX, y: y, width: w.width, height: H)
+    }
+
     /// Janela da página; `nil` quando a tinta (com respiro mínimo e cantos) não cabe.
     /// Horizontal: corrige pela tinta só quando ela sai da faixa de referência
     /// além de `threshold` (scan torto); abaixo disso fica a margem mediana.
@@ -131,6 +159,25 @@ struct CropFrame: Sendable {
                               ink: ink.map { ($0.minY, $0.maxY) }, clear: clear.y,
                               page: (pageBox.minY, pageBox.maxY))
         return CGRect(origin: CGPoint(x: x, y: y), size: size)
+    }
+}
+
+/// União de intervalos fechados [a, b] na reta.
+struct Intervals {
+    var parts: [(CGFloat, CGFloat)]
+
+    init(_ parts: [(CGFloat, CGFloat)]) { self.parts = parts.filter { $0.0 <= $0.1 } }
+
+    var isEmpty: Bool { parts.isEmpty }
+
+    func intersecting(_ o: Intervals) -> Intervals {
+        var out: [(CGFloat, CGFloat)] = []
+        for a in parts { for b in o.parts { out.append((max(a.0, b.0), min(a.1, b.1))) } }
+        return Intervals(out)
+    }
+
+    func closest(to x: CGFloat) -> CGFloat? {
+        parts.map { min(max(x, $0.0), $0.1) }.min { abs($0 - x) < abs($1 - x) }
     }
 }
 
@@ -172,13 +219,17 @@ enum CropLayoutEngine {
     /// Desvio horizontal além da faixa de referência que pede correção por página.
     static let realignThresholdMM: CGFloat = 3
 
-    static func compute(_ doc: DocumentAnalysis, _ profile: ViewportProfile, _ recipe: Recipe) -> CropLayout {
+    /// `removeHeaderFooter` = E2: classes, escala e janelas pela tinta do corpo
+    /// (`bodyInkBox ?? inkBox`), e os blocos removidos nunca parcialmente dentro.
+    static func compute(_ doc: DocumentAnalysis, _ profile: ViewportProfile, _ recipe: Recipe,
+                        removeHeaderFooter: Bool = false) -> CropLayout {
         let v = profile.sizePt
         let r = Units.mmToPt(CGFloat(max(0, recipe.marginMM)))
         let m = min(r, Units.mmToPt(minimumMarginMM))
         let R = max(0, profile.cornerRadiusPt)
         let threshold = Units.mmToPt(realignThresholdMM)
         let classes = PageClassifier.classes(doc, mode: recipe.classMode)
+        func ink(_ p: PageAnalysis) -> CGRect? { removeHeaderFooter ? (p.usableBodyInk ?? p.usableInk) : p.usableInk }
 
         var frames: [CropFrame?] = []
         var counts: [Int] = []
@@ -186,7 +237,7 @@ enum CropLayoutEngine {
         windows.reserveCapacity(doc.pages.count)
 
         for (ci, members) in classes.enumerated() {
-            let inks = members.compactMap { doc.pages[$0].usableInk }
+            let inks = members.compactMap { ink(doc.pages[$0]) }
             counts.append(inks.count)
             let frame: CropFrame? = inks.isEmpty ? nil : CropFrame(
                 refInk: CGSize(width: Stats.lowerPercentile(inks.map(\.width), recipe.referencePercentile),
@@ -204,21 +255,34 @@ enum CropLayoutEngine {
                     windows.append(PageWindow(position: pos, window: p.window, scale: p.scale, kind: .empty, classIndex: ci))
                     continue
                 }
-                guard let ink = page.usableInk else {
+                guard let pageInk = ink(page) else {
                     let w = frame.window(for: nil, pageBox: box, minMargin: m, threshold: threshold)!
                     windows.append(PageWindow(position: pos, window: w, scale: frame.scale, kind: .empty, classIndex: ci))
                     continue
                 }
-                if let w = frame.window(for: ink, pageBox: box, minMargin: m, threshold: threshold) {
-                    windows.append(PageWindow(position: pos, window: w, scale: frame.scale, kind: .regular, classIndex: ci))
-                } else {
-                    // §6.1.5: escala própria só desta página, nunca cortar tinta.
+                let removed = removeHeaderFooter && page.usableBodyInk != nil ? page.removedHeaderFooter : []
+                // Ordem: janela da classe; com bloco removido impossível de deixar inteiro
+                // fora, a da classe com a tinta completa (o bloco entra inteiro); só então
+                // escala própria (§6.1.5), primeiro sem os blocos, depois com tudo.
+                func classWindow(_ ink: CGRect, _ blocks: [CGRect]) -> PageWindow? {
+                    guard let w = frame.window(for: ink, pageBox: box, minMargin: m, threshold: threshold),
+                          let a = frame.avoiding(blocks, window: w, ink: ink, minMargin: m) else { return nil }
+                    return PageWindow(position: pos, window: a, scale: frame.scale, kind: .regular, classIndex: ci)
+                }
+                func ownWindow(_ ink: CGRect, _ blocks: [CGRect]) -> PageWindow? {
                     let own = CropFrame(refInk: ink.size, anchorLeft: ink.minX, anchorTop: ink.maxY,
                                         viewport: v, margin: r, corner: R, maxScale: recipe.maxScale)
                     let w = own.window(for: ink, pageBox: box, minMargin: m, threshold: threshold)
                         ?? own.window(for: ink, pageBox: box, minMargin: 0, threshold: threshold, forced: true)!
-                    windows.append(PageWindow(position: pos, window: w, scale: own.scale, kind: .exception, classIndex: ci))
+                    guard let a = own.avoiding(blocks, window: w, ink: ink, minMargin: m) else { return nil }
+                    return PageWindow(position: pos, window: a, scale: own.scale, kind: .exception, classIndex: ci)
                 }
+                let full = page.usableInk ?? pageInk
+                let placed = classWindow(pageInk, removed)
+                    ?? (removed.isEmpty ? nil : classWindow(full, []))
+                    ?? ownWindow(pageInk, removed)
+                    ?? ownWindow(full, [])!
+                windows.append(placed)
             }
         }
         windows.sort { $0.position < $1.position }
