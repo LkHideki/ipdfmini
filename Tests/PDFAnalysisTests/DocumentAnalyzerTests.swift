@@ -354,10 +354,16 @@ extension SerialAnalysisTests {
             }
         })
         _ = try await analyze(data, concurrency: 1)   // aquece fontes e caches do PDFKit
+        // Menor de 3 medições: a suíte serializada ainda disputa CPU com os testes
+        // paralelos do mesmo bundle, e uma rodada sob contenção passava do teto
+        // (falha intermitente). O mínimo mede o custo da análise, não a carga.
         let clock = ContinuousClock()
-        let t = try await clock.measure { _ = try await analyze(data, concurrency: 1) }
-        let ms = Double(t.components.attoseconds) / 1e15 + Double(t.components.seconds) * 1000
-        let perPage = ms / Double(n)
+        var best = Double.infinity
+        for _ in 0..<3 {
+            let t = try await clock.measure { _ = try await analyze(data, concurrency: 1) }
+            best = min(best, Double(t.components.attoseconds) / 1e15 + Double(t.components.seconds) * 1000)
+        }
+        let perPage = best / Double(n)
         print("PDFAnalysis: \(String(format: "%.1f", perPage)) ms por página digital A4 (serial, \(n) páginas)")
         // teto folgado para build de debug; o orçamento do §16 é 40 ms em release
         #expect(perPage < 150)
