@@ -1,0 +1,4 @@
+module CQPDF {
+    header "ipm_qpdf.h"
+    export *
+}

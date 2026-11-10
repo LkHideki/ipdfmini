@@ -24,6 +24,38 @@ let package = Package(
         ),
         .executableTarget(name: "ipdfmini-spikes", dependencies: ["MiniGeometry"]),
 
+        // libjpeg-turbo 3.2.1, C puro, sem SIMD. Obrigatório: Pl_DCT.hh do qpdf inclui jpeglib.h.
+        // As .c com sufixo de precisão (src/wrapper) incluem as demais; por isso a lista é explícita.
+        .target(
+            name: "CJPEG",
+            path: "Vendor/libjpeg-turbo",
+            exclude: ["LICENSE.md", "README.ijg"],
+            sources: [
+                "src/wrapper",
+                "src/jaricom.c", "src/jcapimin.c", "src/jcarith.c", "src/jchuff.c", "src/jcicc.c",
+                "src/jcinit.c", "src/jclhuff.c", "src/jcmarker.c", "src/jcmaster.c", "src/jcomapi.c",
+                "src/jcparam.c", "src/jcphuff.c", "src/jctrans.c", "src/jdapimin.c", "src/jdarith.c",
+                "src/jdatadst.c", "src/jdatasrc.c", "src/jdhuff.c", "src/jdicc.c", "src/jdinput.c",
+                "src/jdlhuff.c", "src/jdmarker.c", "src/jdmaster.c", "src/jdphuff.c", "src/jdtrans.c",
+                "src/jerror.c", "src/jfdctflt.c", "src/jmemmgr.c", "src/jmemnobs.c", "src/jpeg_nbits.c",
+            ],
+            publicHeadersPath: "include",
+            cSettings: [.headerSearchPath("src")]
+        ),
+        // qpdf 12.4.2 (crypto nativo, zlib do SDK) atrás de uma API C pura (capi/ipm_qpdf.h);
+        // o C++ fica todo aqui dentro, então nenhum target Swift usa interoperabilidade C++.
+        .target(
+            name: "CQPDF",
+            dependencies: ["CJPEG"],
+            path: "Vendor/qpdf",
+            exclude: ["LICENSE.txt", "NOTICE.md", "Artistic-2.0", "libqpdf/sph/md_helper.c"],
+            sources: ["libqpdf", "ipm"],
+            publicHeadersPath: "capi",
+            cxxSettings: [.headerSearchPath("libqpdf"), .headerSearchPath("include")],
+            linkerSettings: [.linkedLibrary("z")]
+        ),
+        .target(name: "QPDFKit", dependencies: ["CQPDF"]),
+
         .testTarget(name: "MiniGeometryTests", dependencies: ["MiniGeometry"]),
         .testTarget(name: "PDFAnalysisTests", dependencies: ["PDFAnalysis", "SyntheticCorpus"]),
         .testTarget(name: "LayoutEngineTests", dependencies: ["LayoutEngine"]),
@@ -31,5 +63,7 @@ let package = Package(
         .testTarget(name: "SyntheticCorpusTests", dependencies: ["SyntheticCorpus"]),
         // ipdfmini-cli: o aceite do M1 roda `convert` pela própria CLI (executável testável).
         .testTarget(name: "MiniKitTests", dependencies: ["MiniKit", "SyntheticCorpus", "ipdfmini-cli"]),
-    ]
+        .testTarget(name: "QPDFKitTests", dependencies: ["QPDFKit"]),
+    ],
+    cxxLanguageStandard: .cxx20
 )
