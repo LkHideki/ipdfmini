@@ -135,11 +135,14 @@ struct Plan: AsyncParsableCommand {
     @Argument(help: "PDF de entrada.") var pdf: String
     @OptionGroup var conversion: ConversionArguments
     @Flag(help: "Imprime candidatos e plano em JSON.") var json = false
+    // App (§14.2): análise inteira no mesmo JSON, para replanejar sem reanalisar.
+    @Flag(help: "Com --json: inclui a análise completa (FullPlanReport).") var full = false
 
     func run() async throws {
         try await guarded {
             let r = try await Converter().plan(input: try inputURL(pdf), options: try conversion.options())
-            print(json ? try Output.json(PlanReport(r)) : Text.plan(r))
+            guard json else { print(Text.plan(r)); return }
+            print(full ? try Output.json(FullPlanReport(r)) : try Output.json(PlanReport(r)))
         }
     }
 }

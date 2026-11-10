@@ -67,3 +67,17 @@ let package = Package(
     ],
     cxxLanguageStandard: .cxx20
 )
+
+// MARK: - App macOS (M2)
+// Bloco à parte, acrescentado ao fim, para mesclar sem conflito com outros targets.
+// Produto com nome distinto da CLI: "iPDFmini" e "ipdfmini" colidem em disco sem
+// distinção de maiúsculas; o build-app.sh renomeia dentro do bundle.
+package.products += [
+    .executable(name: "iPDFminiApp", targets: ["iPDFminiApp"]),
+]
+package.targets += [
+    .target(name: "AppCore", dependencies: ["MiniKit", "MiniGeometry", "PDFAnalysis", "LayoutEngine", "PDFWriting"]),
+    .executableTarget(name: "iPDFminiApp", dependencies: ["AppCore", "MiniKit", "MiniGeometry", "LayoutEngine", "PDFWriting"]),
+    // ipdfmini-cli: o executável da CLI é o processo filho dos testes de isolamento.
+    .testTarget(name: "AppCoreTests", dependencies: ["AppCore", "MiniKit", "LayoutEngine", "PDFAnalysis", "MiniGeometry", "ipdfmini-cli"]),
+]
