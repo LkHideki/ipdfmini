@@ -44,7 +44,7 @@ public struct WriteOptions: Sendable, Equatable {
 public enum WriteWarning: Codable, Sendable, Equatable {
     /// A janela gravada não tem a proporção de `OutputPage.sizePt`.
     case aspectMismatch(outputPage: Int, relativeError: Double)
-    /// Saída maior que 1,1× a origem (meta da §9.3).
+    /// Saída acima do orçamento do escritor: 1,1× no BoxWriter (§9.3), 1,3× no PlacementWriter (§17 M3).
     case sizeBudgetExceeded(ratio: Double)
     /// O BoxWriter não desenha sobreposições (indicador de página etc.).
     case overlaysIgnored(count: Int)

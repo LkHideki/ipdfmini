@@ -15,7 +15,7 @@ let package = Package(
         .target(name: "MiniGeometry"),
         .target(name: "PDFAnalysis", dependencies: ["MiniGeometry"]),
         .target(name: "LayoutEngine", dependencies: ["MiniGeometry", "PDFAnalysis"]),
-        .target(name: "PDFWriting", dependencies: ["MiniGeometry", "PDFAnalysis", "LayoutEngine"]),
+        .target(name: "PDFWriting", dependencies: ["MiniGeometry", "PDFAnalysis", "LayoutEngine", "QPDFKit"]),
         .target(name: "SyntheticCorpus", dependencies: ["MiniGeometry"]),
         .target(name: "MiniKit", dependencies: ["MiniGeometry", "PDFAnalysis", "LayoutEngine", "PDFWriting"]),
         .executableTarget(
@@ -51,7 +51,12 @@ let package = Package(
             exclude: ["LICENSE.txt", "NOTICE.md", "Artistic-2.0", "libqpdf/sph/md_helper.c"],
             sources: ["libqpdf", "ipm"],
             publicHeadersPath: "capi",
-            cxxSettings: [.headerSearchPath("libqpdf"), .headerSearchPath("include")],
+            cxxSettings: [
+                .headerSearchPath("libqpdf"), .headerSearchPath("include"),
+                // QTC::TC (cobertura de testes do qpdf) grava num map global sem lock:
+                // SIGSEGV raro com documentos abertos em paralelo. Recurso do próprio qpdf.
+                .define("QPDF_DISABLE_QTC"),
+            ],
             linkerSettings: [.linkedLibrary("z")]
         ),
         .target(name: "QPDFKit", dependencies: ["CQPDF"]),

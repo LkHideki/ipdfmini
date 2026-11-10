@@ -126,6 +126,69 @@ public final class QPDFDocument {
         }
     }
 
+    /// Referência PDF ("N G R") ao objeto da página de saída, para destinos.
+    public func outputPageReference(_ outputPage: Int) throws -> String {
+        var number: Int32 = 0, generation: Int32 = 0
+        try call { err, cap in ipm_output_page_object(handle, Int32(clamping: outputPage), &number, &generation, err, cap) }
+        return "\(number) \(generation) R"
+    }
+
+    /// Acrescenta uma anotação (dicionário em sintaxe PDF) à página de saída.
+    public func addAnnotation(_ dictionary: String, toPage outputPage: Int) throws {
+        try withBytes(dictionary) { p, n in
+            try call { err, cap in ipm_add_annotation(handle, Int32(clamping: outputPage), p, n, err, cap) }
+        }
+    }
+
+    /// Grava (`value` em sintaxe PDF) ou remove (`nil`) uma chave do catálogo; com `subkey`,
+    /// dentro do dicionário em `key`.
+    public func setCatalogEntry(_ key: String, subkey: String? = nil, value: String?) throws {
+        guard let value else {
+            try call { err, cap in ipm_set_catalog_entry(handle, key, subkey, nil, 0, err, cap) }
+            return
+        }
+        try withBytes(value) { p, n in
+            try call { err, cap in ipm_set_catalog_entry(handle, key, subkey, p, n, err, cap) }
+        }
+    }
+
+    /// Grava ou remove (`nil`) uma chave do dicionário Info (ex. "/Producer").
+    public func setInfo(_ key: String, _ value: String?) throws {
+        try call { err, cap in ipm_set_info_entry(handle, key, value, err, cap) }
+    }
+
+    /// Item do sumário; `parent` indexa um item anterior (nil = raiz).
+    public struct OutlineItem: Sendable, Equatable {
+        public var title: String
+        public var parent: Int?
+        /// Destino em sintaxe PDF (ex. "[12 0 R /XYZ 10 700 null]").
+        public var destination: String?
+        public var isOpen: Bool
+
+        public init(title: String, parent: Int?, destination: String?, isOpen: Bool = false) {
+            self.title = title
+            self.parent = parent
+            self.destination = destination
+            self.isOpen = isOpen
+        }
+    }
+
+    /// Substitui o sumário (vazio = remove).
+    public func setOutline(_ items: [OutlineItem]) throws {
+        // strdup: ponteiros C estáveis durante a chamada.
+        let titles = items.map { strdup($0.title) }
+        let dests = items.map { $0.destination.map { strdup($0) } ?? nil }
+        defer {
+            titles.forEach { free($0) }
+            dests.forEach { free($0) }
+        }
+        let parents = items.map { Int32($0.parent ?? -1) }
+        let open = items.map { Int32($0.isOpen ? 1 : 0) }
+        let t: [UnsafePointer<CChar>?] = titles.map { $0.map { UnsafePointer($0) } }
+        let d: [UnsafePointer<CChar>?] = dests.map { $0.map { UnsafePointer($0) } }
+        try call { err, cap in ipm_set_outline(handle, Int32(items.count), t, parents, d, open, err, cap) }
+    }
+
     /// Remove as páginas originais; só as de saída ficam no arquivo.
     public func removeSourcePages() throws {
         try call { err, cap in ipm_remove_source_pages(handle, err, cap) }
@@ -154,6 +217,19 @@ public final class QPDFDocument {
 
     private func call(_ body: (UnsafeMutablePointer<CChar>, Int) -> Int32) throws {
         try Self.call(body)
+    }
+
+    /// Bytes UTF-8 de `s` (sem NUL; a C API recebe o comprimento).
+    private func withBytes(_ s: String, _ body: (UnsafePointer<CChar>, Int) throws -> Void) throws {
+        let bytes = Array(s.utf8)
+        try bytes.withUnsafeBufferPointer { buffer in
+            try buffer.withMemoryRebound(to: CChar.self) { c in
+                guard let base = c.baseAddress else {
+                    throw QPDFError(kind: .invalidArgument, message: "texto vazio")
+                }
+                try body(base, c.count)
+            }
+        }
     }
 }
 

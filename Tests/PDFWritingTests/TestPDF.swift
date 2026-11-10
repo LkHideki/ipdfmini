@@ -135,8 +135,21 @@ enum TestPDF {
         return ctx?.makeImage()
     }
 
+    /// CTFontCreateWithName concorrente trava no XPC do registro de fontes (SPIKES.md S3);
+    /// os testes rodam em paralelo, então a fonte é criada uma vez, sob lock.
+    private static let fontLock = NSLock()
+    nonisolated(unsafe) private static var cachedFont: CTFont?
+    static var font: CTFont {
+        fontLock.lock()
+        defer { fontLock.unlock() }
+        if let f = cachedFont { return f }
+        let f = CTFontCreateWithName(fontName as CFString, 11, nil)
+        cachedFont = f
+        return f
+    }
+
     static func drawText(_ ctx: CGContext, page: Int, spec: TestPageSpec) {
-        let font = CTFontCreateWithName(fontName as CFString, 11, nil)
+        let font = Self.font
         let box = spec.crop ?? spec.media
         for l in 0..<spec.lines {
             let text = "p\(page)l\(l) lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore"

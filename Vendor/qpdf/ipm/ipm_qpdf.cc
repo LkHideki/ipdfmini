@@ -8,6 +8,7 @@
 #include <qpdf/QPDFPageObjectHelper.hh>
 #include <qpdf/QPDFSystemError.hh>
 #include <qpdf/QPDFWriter.hh>
+#include <qpdf/QTC.hh>
 
 #include <algorithm>
 #include <charconv>
@@ -15,6 +16,7 @@
 #include <cstring>
 #include <exception>
 #include <memory>
+#include <mutex>
 #include <new>
 #include <string>
 #include <vector>
@@ -59,9 +61,23 @@ void copy_message(std::string const& message, char* error, size_t capacity) {
     error[n] = '\0';
 }
 
+// Sem QPDF_DISABLE_QTC (o build não usa o cmake do qpdf), QTC::TC consulta um std::map
+// estático e insere nele, sem lock, na 1ª vez que vê cada escopo ("qpdf", "libtests").
+// Documentos em threads distintas corrompiam o map (SIGSEGV em processFile, medido nos
+// testes paralelos). Registrar os dois escopos uma vez, antes de tudo, deixa o map só
+// para leitura. Sai quando o CQPDF for compilado com .define("QPDF_DISABLE_QTC").
+void warm_up_qtc() {
+    static std::once_flag once;
+    std::call_once(once, [] {
+        QTC::TC("qpdf", "ipm warm-up");
+        QTC::TC("libtests", "ipm warm-up");
+    });
+}
+
 // Toda exceção C++ termina aqui: nada atravessa a fronteira C.
 template <typename F>
 int guarded(char* error, size_t capacity, F&& body) {
+    warm_up_qtc();
     if (error != nullptr && capacity > 0) {
         error[0] = '\0';
     }
@@ -217,6 +233,24 @@ std::string xobject_name(int source_page) {
     return "/IPMFm" + std::to_string(source_page);
 }
 
+void require_name(char const* name, char const* what) {
+    if (name == nullptr || name[0] != '/' || name[1] == '\0') {
+        fail(IPM_ERR_ARGUMENT, std::string(what) + " deve ser um nome PDF (\"/Nome\")");
+    }
+}
+
+// Objeto em sintaxe PDF; "N G R" resolve no próprio documento.
+QPDFObjectHandle parse_object(ipm_doc& d, char const* pdf, size_t length, char const* what) {
+    if (pdf == nullptr || length == 0) {
+        fail(IPM_ERR_ARGUMENT, std::string(what) + " vazio");
+    }
+    try {
+        return QPDFObjectHandle::parse(d.pdf.get(), std::string(pdf, length), what);
+    } catch (QPDFExc const& e) {
+        fail(IPM_ERR_ARGUMENT, std::string(what) + " invalido: " + e.what());
+    }
+}
+
 // Materializa o content stream de cada página alterada.
 void finalize(ipm_doc& d) {
     for (OutputPage& p : d.outputs) {
@@ -367,6 +401,160 @@ int ipm_append_content(ipm_doc* doc, int output_page, const char* data, size_t l
         }
         out.content += '\n'; // evita colar o último token no operador seguinte
         out.dirty = true;
+    });
+}
+
+int ipm_output_page_object(ipm_doc* doc, int output_page, int* out_number, int* out_generation, char* error,
+                           size_t error_capacity) {
+    return guarded(error, error_capacity, [&] {
+        ipm_doc& d = require_doc(doc);
+        if (out_number == nullptr || out_generation == nullptr) {
+            fail(IPM_ERR_ARGUMENT, "saidas nulas");
+        }
+        OutputPage& out = output_at(d, output_page);
+        *out_number = out.dict.getObjectID();
+        *out_generation = out.dict.getGeneration();
+    });
+}
+
+int ipm_add_annotation(ipm_doc* doc, int output_page, const char* pdf, size_t length, char* error,
+                       size_t error_capacity) {
+    return guarded(error, error_capacity, [&] {
+        ipm_doc& d = require_doc(doc);
+        OutputPage& out = output_at(d, output_page);
+        auto annot = parse_object(d, pdf, length, "anotacao");
+        if (!annot.isDictionary()) {
+            fail(IPM_ERR_ARGUMENT, "anotacao nao e dicionario");
+        }
+        annot.replaceKey("/P", out.dict);
+        if (!out.dict.hasKey("/Annots") || !out.dict.getKey("/Annots").isArray()) {
+            out.dict.replaceKey("/Annots", QPDFObjectHandle::newArray());
+        }
+        out.dict.getKey("/Annots").appendItem(d.pdf->makeIndirectObject(annot));
+    });
+}
+
+int ipm_set_catalog_entry(ipm_doc* doc, const char* key, const char* subkey, const char* pdf, size_t length,
+                          char* error, size_t error_capacity) {
+    return guarded(error, error_capacity, [&] {
+        ipm_doc& d = require_doc(doc);
+        require_name(key, "key");
+        QPDFObjectHandle target = d.pdf->getRoot();
+        std::string name = key;
+        if (subkey != nullptr) {
+            require_name(subkey, "subkey");
+            QPDFObjectHandle inner = target.getKey(key);
+            if (!inner.isDictionary()) {
+                if (pdf == nullptr) {
+                    return;
+                }
+                inner = QPDFObjectHandle::newDictionary();
+                target.replaceKey(key, inner);
+            }
+            target = inner;
+            name = subkey;
+        }
+        if (pdf == nullptr) {
+            target.removeKey(name);
+        } else {
+            target.replaceKey(name, parse_object(d, pdf, length, name.c_str()));
+        }
+    });
+}
+
+int ipm_set_info_entry(ipm_doc* doc, const char* key, const char* value, char* error, size_t error_capacity) {
+    return guarded(error, error_capacity, [&] {
+        ipm_doc& d = require_doc(doc);
+        require_name(key, "key");
+        QPDFObjectHandle trailer = d.pdf->getTrailer();
+        QPDFObjectHandle info = trailer.getKey("/Info");
+        if (!info.isDictionary()) {
+            if (value == nullptr) {
+                return;
+            }
+            info = d.pdf->makeIndirectObject(QPDFObjectHandle::newDictionary());
+            trailer.replaceKey("/Info", info);
+        }
+        if (value == nullptr) {
+            info.removeKey(key);
+        } else {
+            info.replaceKey(key, QPDFObjectHandle::newUnicodeString(value));
+        }
+    });
+}
+
+int ipm_set_outline(ipm_doc* doc, int count, const char* const* titles, const int* parents,
+                    const char* const* destinations, const int* open, char* error, size_t error_capacity) {
+    return guarded(error, error_capacity, [&] {
+        ipm_doc& d = require_doc(doc);
+        if (count < 0) {
+            fail(IPM_ERR_ARGUMENT, "count negativo");
+        }
+        QPDFObjectHandle root = d.pdf->getRoot();
+        if (count == 0) {
+            root.removeKey("/Outlines");
+            return;
+        }
+        if (titles == nullptr || parents == nullptr || destinations == nullptr || open == nullptr) {
+            fail(IPM_ERR_ARGUMENT, "vetores nulos");
+        }
+        auto n = static_cast<size_t>(count);
+        auto top = d.pdf->makeIndirectObject(QPDFObjectHandle::newDictionary());
+        top.replaceKey("/Type", QPDFObjectHandle::newName("/Outlines"));
+        std::vector<QPDFObjectHandle> items(n);
+        std::vector<std::vector<size_t>> children(n);
+        std::vector<size_t> roots;
+        for (size_t i = 0; i < n; ++i) {
+            int p = parents[i];
+            if (p < -1 || p >= static_cast<int>(i)) {
+                fail(IPM_ERR_ARGUMENT, "pai invalido no item " + std::to_string(i));
+            }
+            auto item = d.pdf->makeIndirectObject(QPDFObjectHandle::newDictionary());
+            item.replaceKey("/Title", QPDFObjectHandle::newUnicodeString(titles[i] != nullptr ? titles[i] : ""));
+            if (destinations[i] != nullptr) {
+                item.replaceKey("/Dest", parse_object(d, destinations[i], std::strlen(destinations[i]), "destino"));
+            }
+            items[i] = item;
+            (p < 0 ? roots : children[static_cast<size_t>(p)]).push_back(i);
+        }
+        // Encadeia irmãos e calcula /Count de trás para frente (filhos têm índice maior que o pai).
+        std::vector<long long> visible(n, 0);
+        auto link = [&](QPDFObjectHandle parent, std::vector<size_t> const& kids) {
+            for (size_t k = 0; k < kids.size(); ++k) {
+                auto item = items[kids[k]];
+                item.replaceKey("/Parent", parent);
+                if (k > 0) {
+                    item.replaceKey("/Prev", items[kids[k - 1]]);
+                }
+                if (k + 1 < kids.size()) {
+                    item.replaceKey("/Next", items[kids[k + 1]]);
+                }
+            }
+            if (!kids.empty()) {
+                parent.replaceKey("/First", items[kids.front()]);
+                parent.replaceKey("/Last", items[kids.back()]);
+            }
+        };
+        for (size_t i = n; i-- > 0;) {
+            link(items[i], children[i]);
+            long long sum = 0;
+            for (size_t c : children[i]) {
+                sum += 1 + (open[c] != 0 ? visible[c] : 0);
+            }
+            visible[i] = sum;
+            if (!children[i].empty()) {
+                // Positivo = aberto (descendentes visíveis); negativo = fechado.
+                long long shown = open[i] != 0 ? sum : -static_cast<long long>(children[i].size());
+                items[i].replaceKey("/Count", QPDFObjectHandle::newInteger(shown));
+            }
+        }
+        link(top, roots);
+        long long total = 0;
+        for (size_t r : roots) {
+            total += 1 + (open[r] != 0 ? visible[r] : 0);
+        }
+        top.replaceKey("/Count", QPDFObjectHandle::newInteger(total));
+        root.replaceKey("/Outlines", top);
     });
 }
 

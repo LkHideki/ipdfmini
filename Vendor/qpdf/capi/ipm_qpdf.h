@@ -76,6 +76,42 @@ int ipm_place_page(ipm_doc* doc, int output_page, int source_page, const double*
 int ipm_append_content(ipm_doc* doc, int output_page, const char* data, size_t length, char* error,
                        size_t error_capacity);
 
+/*
+ * Navegação e metadados (PlacementWriter, PLAN §9.2). Regravar pelo PDFKit achata os Form
+ * XObjects (o Quartz reemite o conteúdo por colocação: até 3,3x o tamanho), por isso links,
+ * sumário, anotações e Info são gravados aqui.
+ *
+ * Objetos em sintaxe PDF (`pdf`, `length`) são lidos com o documento como contexto: "N G R"
+ * referencia objetos dele, como as páginas de saída (ipm_output_page_object).
+ */
+
+/* Número e geração do objeto da página de saída, para referências "N G R" em destinos. */
+int ipm_output_page_object(ipm_doc* doc, int output_page, int* out_number, int* out_generation, char* error,
+                           size_t error_capacity);
+
+/* Acrescenta uma anotação (dicionário em sintaxe PDF) a /Annots da página de saída; /P é preenchido. */
+int ipm_add_annotation(ipm_doc* doc, int output_page, const char* pdf, size_t length, char* error,
+                       size_t error_capacity);
+
+/*
+ * Grava (`pdf` != NULL) ou remove (`pdf` == NULL) uma chave do catálogo, ex. "/PageLabels".
+ * `subkey` != NULL atua dentro do dicionário em `key` (ex. "/Names", "/Dests"); remover de um
+ * dicionário ausente não é erro.
+ */
+int ipm_set_catalog_entry(ipm_doc* doc, const char* key, const char* subkey, const char* pdf, size_t length,
+                          char* error, size_t error_capacity);
+
+/* Grava (UTF-8) ou remove (`value` == NULL) uma chave do dicionário Info, criando-o se preciso. */
+int ipm_set_info_entry(ipm_doc* doc, const char* key, const char* value, char* error, size_t error_capacity);
+
+/*
+ * Substitui o sumário. Item i: título UTF-8 `titles[i]`, pai `parents[i]` (-1 = raiz; o pai vem
+ * antes do filho), destino `destinations[i]` em sintaxe PDF (ex. "[12 0 R /XYZ 10 700 null]")
+ * ou NULL, aberto se `open[i]` != 0. Filhos na ordem do vetor. count == 0 remove o sumário.
+ */
+int ipm_set_outline(ipm_doc* doc, int count, const char* const* titles, const int* parents,
+                    const char* const* destinations, const int* open, char* error, size_t error_capacity);
+
 /* Remove as páginas originais da árvore de páginas; só as de saída ficam no documento. */
 int ipm_remove_source_pages(ipm_doc* doc, char* error, size_t error_capacity);
 
