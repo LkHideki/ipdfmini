@@ -8,15 +8,35 @@ import SyntheticCorpus
 import Testing
 @testable import MiniKit
 
-// Aceite do M1 (PLAN.md §17) ponta a ponta sobre o corpus sintético, com o auto do M3 (E0–E5).
+// Aceite do M1 (PLAN.md §17) ponta a ponta sobre o corpus sintético: padrão 1 página → 1
+// página (E0–E2) e, com a divisão permitida, o auto do M3 (E0–E5).
 
 @Suite struct AcceptanceTests {
-    /// Todos os invariantes, sem e com a remoção de cabeçalho/rodapé, com a estratégia
-    /// que o auto escolher (E0–E5). 4 e 7 só se aplicam ao PlacementWriter (E3+).
+    /// Padrão (divisão desligada, INC-22): todos os invariantes, sem e com a remoção de
+    /// cabeçalho/rodapé, e exatamente uma página de saída por página de origem, cada uma com
+    /// a própria página (inv. 9), em todo cenário.
     @Test(arguments: Scenario.allCases, [false, true])
     func invariantsHoldOnEveryScenario(_ s: Scenario, removeHeaders: Bool) async throws {
         let c = try await ConversionCache.shared.converted(s, removeHeaders: removeHeaders)
-        try Self.expectAllInvariants(c, tag: "\(s)\(removeHeaders ? " (E2 permitido)" : "")")
+        let tag = "\(s)\(removeHeaders ? " (E2 permitido)" : "")"
+        try Self.expectAllInvariants(c, tag: tag)
+        #expect(!StrategyID.splitsPages(c.report.chosen.strategy), "\(tag): \(c.report.chosen.strategy.rawValue)")
+        #expect(!c.report.candidates.contains { StrategyID.splitsPages($0.strategy) }, "\(tag): E3–E5 na tabela")
+        #expect(!c.report.allowSplitting)
+        #expect(c.report.write.outputPageCount == c.truth.pages.count, "\(tag)")
+        #expect(c.report.validation?.result("9")?.status == .passed, "\(tag): \(c.report.validation?.result("9")?.detail ?? "")")
+        for (j, out) in c.report.plan.pages.enumerated() {
+            #expect(out.placements.map(\.sourcePage) == [j], "\(tag): saída \(j + 1)")
+        }
+    }
+
+    /// Divisão permitida: os mesmos invariantes com a estratégia que o auto escolher (E0–E5).
+    /// 4 e 7 só se aplicam ao PlacementWriter (E3+); 9 não se aplica.
+    @Test(arguments: Scenario.allCases, [false, true])
+    func invariantsHoldWithSplittingAllowed(_ s: Scenario, removeHeaders: Bool) async throws {
+        let c = try await ConversionCache.shared.converted(s, removeHeaders: removeHeaders, split: true)
+        #expect(c.report.allowSplitting)
+        try Self.expectAllInvariants(c, tag: "\(s) com divisão\(removeHeaders ? " (E2 permitido)" : "")")
     }
 
     /// E0–E2 forçados (BoxWriter) continuam verdes em todos os cenários: o auto do M3
@@ -31,10 +51,13 @@ import Testing
     static func expectAllInvariants(_ c: Converted, tag: String) throws {
         let v = try #require(c.report.validation)
         let box = WriterKind(strategy: c.report.plan.recipe.strategy) == .box
-        for id in ["1a", "1b", "2", "3", "4", "5", "6", "7", "8"] {
+        for id in ["1a", "1b", "2", "3", "4", "5", "6", "7", "8", "9"] {
             let r = try #require(v.result(id), "\(tag): invariante \(id) ausente")
             if box, id == "4" || id == "7" {
                 #expect(r.status == .notApplicable && !r.detail.isEmpty, "\(tag) inv. \(id)")
+            } else if id == "9", c.report.allowSplitting {
+                // Divisão permitida: a regra 1 → 1 não vale.
+                #expect(r.status == .notApplicable && !r.detail.isEmpty, "\(tag) inv. 9")
             } else {
                 #expect(r.status == .passed, "\(tag) [\(c.report.chosen.strategy.rawValue)] inv. \(id): \(r.detail)")
             }
@@ -68,9 +91,9 @@ import Testing
     /// Opção desligada (padrão, §18 R5): E2 nem é candidato, o auto não o escolhe e
     /// todo bloco de cabeçalho/rodapé continua inteiro dentro de alguma colocação
     /// (no M1 o auto era sempre E1; com E3–E5 candidatos, a garantia vale para todos).
-    @Test(arguments: Scenario.allCases)
-    func headersKeptWhenRemovalIsOff(_ s: Scenario) async throws {
-        let c = try await ConversionCache.shared.converted(s)
+    @Test(arguments: Scenario.allCases, [false, true])
+    func headersKeptWhenRemovalIsOff(_ s: Scenario, split: Bool) async throws {
+        let c = try await ConversionCache.shared.converted(s, split: split)
         let analysis = try await ConversionCache.shared.analysis(s)
         #expect(c.report.chosen.strategy != .aggressiveCrop)
         #expect(!c.report.candidates.contains { $0.strategy == .aggressiveCrop })
@@ -84,7 +107,7 @@ import Testing
     }
 
     /// Com E2: o que sai é inteiro (nunca cortado ao meio) e o cabeçalho corrido dos livros
-    /// sai mesmo. E2 forçado: com E3–E5 candidatos, o auto prefere fatias nos livros (E1/E2
+    /// sai mesmo. E2 forçado: com a divisão permitida, o auto prefere fatias nos livros (E1/E2
     /// não chegam ao alvo), e o que se prova aqui é a remoção do E2.
     @Test(arguments: bookScenarios)
     func removedBlocksAreWholeOutside(_ s: Scenario) async throws {
@@ -105,9 +128,12 @@ import Testing
         #expect(removed > 0, "\(s): nenhum cabeçalho/rodapé removido")
     }
 
-    /// §17: sumário e links intactos.
-    @Test func navigationIntact() async throws {
-        let c = try await ConversionCache.shared.converted(.navigation)
+    /// §17: sumário e links intactos, no padrão 1 → 1 (BoxWriter) e com a divisão (PlacementWriter).
+    @Test(arguments: [false, true])
+    func navigationIntact(split: Bool) async throws {
+        let c = try await ConversionCache.shared.converted(.navigation, split: split)
+        let box = WriterKind(strategy: c.report.plan.recipe.strategy) == .box
+        #expect(box != split, "\(c.report.chosen.strategy.rawValue)")
         let nav = try #require(c.report.validation?.result("5"))
         #expect(nav.status == .passed, "\(nav.detail)")
         #expect(nav.metric("itens de sumário") == Double(c.truth.outlineCount))
@@ -127,8 +153,11 @@ import Testing
                 if let d = item.destination, let p = d.page {
                     let j = out.index(for: p)
                     #expect(p.bounds(for: .cropBox).contains(d.point), "\(item.label ?? ""): \(d.point)")
+                    // BoxWriter: a página de saída é a janela de origem levada a (0,0) (S2;
+                    // cenário sem /Rotate, espaço de página = espaço do usuário).
                     let hit = plan.pages[j].placements.first {
-                        $0.sourceRect.applying($0.transform).standardized.insetBy(dx: -0.5, dy: -0.5).contains(d.point)
+                        (box ? CGRect(origin: .zero, size: $0.sourceRect.size) : $0.sourceRect.applying($0.transform))
+                            .standardized.insetBy(dx: -0.5, dy: -0.5).contains(d.point)
                     }
                     #expect(hit != nil, "\(item.label ?? ""): ponto fora das colocações")
                     pages.append(hit?.sourcePage ?? -1)
@@ -143,9 +172,10 @@ import Testing
     /// §17: variação de escala entre páginas da mesma classe = 0, fora as exceções declaradas.
     /// Vale para E0–E4 (escala travada por classe); E5 tem, por desenho (§7), escala da
     /// coluna no documento todo e escala própria para cada bloco de largura total.
-    @Test(arguments: Scenario.allCases, [false, true])
-    func scaleLockedWithinClass(_ s: Scenario, removeHeaders: Bool) async throws {
-        let c = try await ConversionCache.shared.converted(s, removeHeaders: removeHeaders)
+    /// `options`: (remoção de cabeçalho/rodapé, divisão permitida).
+    @Test(arguments: Scenario.allCases, [(false, false), (true, false), (false, true), (true, true)])
+    func scaleLockedWithinClass(_ s: Scenario, options: (removeHeaders: Bool, split: Bool)) async throws {
+        let c = try await ConversionCache.shared.converted(s, removeHeaders: options.removeHeaders, split: options.split)
         let analysis = try await ConversionCache.shared.analysis(s)
         let plan = c.report.plan
         #expect(plan.recipe.classMode == .oddEven)

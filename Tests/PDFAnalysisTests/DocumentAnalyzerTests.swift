@@ -218,6 +218,44 @@ private func printerPage(marks: Bool, truth: inout CGRect) -> PageSpec {
     for p in doc.pages { #expect(!p.blocks.isEmpty && !p.blocks.contains { $0.type == .headerFooter }) }
 }
 
+@Test func folioRunningFootWithChangingTitleIsHeaderFooter() async throws {
+    // INC-22, padrão O'Reilly: "10 | Chapter 1: Introduction" (par, à esquerda) e
+    // "Run Python Programs | 11" (ímpar, à direita), título diferente em cada página.
+    let media = CGRect(x: 0, y: 0, width: 504, height: 661.5)
+    let titles = ["Chapter 1: Introduction", "Run Python Programs", "Chapter 2: Data Types", "A Bigger Example",
+                  "Chapter 3: Numbers", "Lists and Tuples"]
+    var feet = [CGRect](repeating: .null, count: 6)
+    let pages = (0..<6).map { i in
+        PageSpec(media: media) { ctx in
+            Ink.paragraph(lines: 34, size: 10, leading: 14, x: 72, top: 600, seed: i, in: ctx)
+            let folio = 10 + i
+            feet[i] = i % 2 == 0
+                ? Ink.text("\(folio) | \(titles[i])", size: 8, at: CGPoint(x: 72, y: 42.75), in: ctx)
+                : Ink.text("\(titles[i]) | \(folio)", size: 8, at: CGPoint(x: 330, y: 42.75), in: ctx)
+        }
+    }
+    let doc = try await analyze(TestPDF.make(pages))
+    for (i, p) in doc.pages.enumerated() {
+        let hf = p.blocks.filter { $0.type == .headerFooter }
+        #expect(hf.count == 1 && hf[0].rect.insetBy(dx: -1, dy: -1).contains(feet[i]), "página \(i): \(hf.map(\.rect))")
+        // Rodapé fica por último na ordem de leitura e fora do corpo (base do E2).
+        #expect(p.blocks.last?.type == .headerFooter, "página \(i)")
+        #expect(p.removedHeaderFooter.count == 1, "página \(i)")
+    }
+}
+
+@Test func folioShapedLineOnOnePageOnlyIsNotHeaderFooter() async throws {
+    // Linha de tabela "Total | 42" no pé de uma página só: formato de fólio sem repetição.
+    let pages = (0..<4).map { i in
+        PageSpec(media: letter) { ctx in
+            Ink.paragraph(lines: 40, size: 10, leading: 12, x: 72, top: 700, seed: i, in: ctx)
+            if i == 2 { Ink.text("Total | 42", size: 10, at: CGPoint(x: 72, y: 60), in: ctx) }
+        }
+    }
+    let doc = try await analyze(TestPDF.make(pages))
+    for p in doc.pages { #expect(!p.blocks.contains { $0.type == .headerFooter }, "página \(p.index)") }
+}
+
 // MARK: métricas de texto (§5.5)
 
 @Test(arguments: [8.0, 10.0, 12.0, 14.0] as [CGFloat])
@@ -368,4 +406,19 @@ extension SerialAnalysisTests {
         // teto folgado para build de debug; o orçamento do §16 é 40 ms em release
         #expect(perPage < 150)
     }
+}
+
+@Test func pageSizedBlockCrossingFolioIsNotRetyped() {
+    // Página de índice O'Reilly: um bloco da página inteira com uma "linha" só, que cruza o
+    // "M" do topo (passa por número romano) e o fólio "Index | 581" do pé.
+    let page = CGRect(x: 71.75, y: 0, width: 432.25, height: 661.5)
+    let block = Block(rect: page, type: .paragraph,
+                      lines: [Line(rect: page, baseline: 0, xHeightPt: 4.5)], column: nil)
+    let marked = [CGRect(x: 259.5, y: 593.85, width: 8.68, height: 16.77), CGRect(x: 384.46, y: 40.5, width: 47.55, height: 10.78)]
+    #expect(HeaderFooter.mark(marked, in: [block]).map(\.type) == [.paragraph])
+    // Rodapé de verdade (linha do fólio com o fio acima, bloco 3 pt mais alto): vira rodapé.
+    let foot = Block(rect: CGRect(x: 72, y: 40, width: 360, height: 14), type: .paragraph,
+                     lines: [Line(rect: CGRect(x: 72, y: 40.5, width: 96, height: 10.8), baseline: 42.75, xHeightPt: 4.45)],
+                     column: nil)
+    #expect(HeaderFooter.mark([CGRect(x: 72, y: 40.5, width: 96, height: 10.8)], in: [foot]).map(\.type) == [.headerFooter])
 }

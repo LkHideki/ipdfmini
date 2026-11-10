@@ -129,13 +129,26 @@ enum SlicePlanner {
             }
             withBlocks += 1
             if !page.blocks.contains(where: { $0.column != nil }) { noColumns += 1 }
-            var out: [SliceSegment] = []
+            var specs: [SegmentSpec] = []
             var i = 0
             let blocks = page.blocks
+            // Rodapé corrido: blocos `.headerFooter` do fim da ordem de leitura.
+            let footerStart = (blocks.lastIndex { $0.type != .headerFooter } ?? -1) + 1
             while i < blocks.count {
                 guard let col = blocks[i].column else {
-                    out.append(SliceSegment(units: SliceUnits.units(of: blocks[i], index: i), nominal: teto,
-                                            anchor: nil, isBody: false, geometry: g))
+                    let units = SliceUnits.units(of: blocks[i], index: i)
+                    let spec = SegmentSpec(units: units, nominal: teto, anchor: nil, isBody: false)
+                    // Rodapé colado ao segmento anterior entra nele (o DP deixa lugar para ele
+                    // na última fatia) se isso não reduz a escala; longe dele ou mais largo,
+                    // vai à parte (o vão entre segmentos encolhe) e o compositor leva o último
+                    // fragmento junto se não couber.
+                    if footerStart > 0, i >= footerStart, let prev = specs.last,
+                       let merged = prev.appending(units, g) {
+                        specs[specs.count - 1] = merged
+                    } else {
+                        specs.append(spec)
+                        specs[specs.count - 1].trailingFurniture = footerStart > 0 && i >= footerStart
+                    }
                     i += 1
                     continue
                 }
@@ -143,10 +156,10 @@ enum SlicePlanner {
                 while j < blocks.count, blocks[j].column == col { j += 1 }
                 let units = (i..<j).flatMap { SliceUnits.units(of: blocks[$0], index: $0) }
                 let left = units.map(\.rect.minX).min()!
-                out.append(SliceSegment(units: units, nominal: colScale, anchor: (left, colRef ?? 0), isBody: true,
-                                        geometry: g))
+                specs.append(SegmentSpec(units: units, nominal: colScale, anchor: (left, colRef ?? 0), isBody: true))
                 i = j
             }
+            let out = specs.map { $0.segment(g) }
             segs[pos] = out
         }
         let result = SliceLayoutEngine.layout(doc, profile, g) { segs[$0] }
@@ -163,6 +176,35 @@ enum SlicePlanner {
             if wide > 0 { risks.append("\(wide) trechos de largura total abaixo do mínimo") }
         }
         return Run(result: result, risks: risks, applicable: applicable)
+    }
+
+    /// Parâmetros de um segmento antes da geometria, para poder juntar o rodapé.
+    struct SegmentSpec {
+        var units: [SliceUnit]
+        var nominal: CGFloat
+        var anchor: (left: CGFloat, width: CGFloat)?
+        var isBody: Bool
+        var trailingFurniture = false
+
+        func segment(_ g: SliceGeometry) -> SliceSegment {
+            var s = SliceSegment(units: units, nominal: nominal, anchor: anchor, isBody: isBody, geometry: g)
+            s.trailingFurniture = trailingFurniture
+            return s
+        }
+
+        /// Com `more` no fim, se a escala cair no máximo 5% (rodapé da largura da mancha sim,
+        /// mais largo que uma coluna não) e o vão até ele não passar de quatro respiros entre
+        /// colocações na tela: dentro de um segmento o vão vai inteiro para a tela, e num fim
+        /// de capítulo isso custaria uma tela a mais.
+        func appending(_ more: [SliceUnit], _ g: SliceGeometry) -> SegmentSpec? {
+            guard !units.isEmpty, !more.isEmpty else { return nil }
+            var m = self
+            m.units += more
+            let own = segment(g), joined = m.segment(g)
+            let gap = SliceUnits.hull(units[...]).minY - SliceUnits.hull(more[...]).maxY
+            guard joined.scale >= own.scale * 0.95, gap * joined.scale <= 4 * g.gap else { return nil }
+            return m
+        }
     }
 
     /// Faixas de blocos consecutivos da mesma coluna (não nil).

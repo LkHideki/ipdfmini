@@ -21,9 +21,11 @@ private struct Env {
 }
 
 /// As cinco caixas iguais entre si, lidas pelo PDFKit e pelo CGPDFDocument, com o tamanho esperado.
-/// O PDFKit normaliza a origem da MediaBox para (0,0) ao gravar e desloca tudo junto
-/// (conteúdo, anotações); a posição é provada à parte, por render e por anotações.
-private func expectBoxes(_ url: URL, page: Int, size: CGSize, sourceLocation: SourceLocation = #_sourceLocation) {
+/// `origin`: plano 1 → 1 sai pelo qpdf com a janela no próprio lugar (espaço do usuário da
+/// origem); plano reordenado ou com página repetida sai pelo PDFKit, que leva a origem a
+/// (0,0) e desloca tudo junto. A posição do conteúdo é provada à parte, por render.
+private func expectBoxes(_ url: URL, page: Int, size: CGSize, origin: CGPoint = .zero,
+                         sourceLocation: SourceLocation = #_sourceLocation) {
     for (name, boxes) in [("pdfkit", TestPDF.pdfkitBoxes(url, page: page)), ("cg", TestPDF.cgBoxes(url, page: page))] {
         let media = boxes["media"]!
         for (box, r) in boxes {
@@ -31,7 +33,8 @@ private func expectBoxes(_ url: URL, page: Int, size: CGSize, sourceLocation: So
         }
         #expect(near(media.width, size.width) && near(media.height, size.height),
                 "\(name): \(media.size) != \(size)", sourceLocation: sourceLocation)
-        #expect(near(media.minX, 0) && near(media.minY, 0), "\(name): origem \(media.origin)", sourceLocation: sourceLocation)
+        #expect(near(media.minX, origin.x) && near(media.minY, origin.y), "\(name): origem \(media.origin) != \(origin)",
+                sourceLocation: sourceLocation)
     }
 }
 
@@ -40,6 +43,11 @@ private func expectViewportAspect(_ url: URL, pages: Int, sourceLocation: Source
         let s = TestPDF.cgDisplaySize(url, page: i)
         #expect(abs(s.height / s.width / TestPDF.viewport.aspect - 1) <= 0.001, "página \(i): \(s)", sourceLocation: sourceLocation)
     }
+}
+
+/// Janela em espaço do usuário, como o escritor por caixas a grava no plano 1 → 1.
+private func userOrigin(_ src: URL, page: Int = 0, _ w: CGRect) -> CGPoint {
+    BoxWriter.geometry(of: PDFDocument(url: src)!.page(at: page)!).toUser(w).standardized.origin
 }
 
 private func words(_ s: String?) -> [String] {
@@ -58,7 +66,7 @@ private func words(_ s: String?) -> [String] {
         let w = TestPDF.window(x: 100, y: 100, width: 300)
         let report = try await env.write(TestPDF.plan([(0, w)]))
         #expect(report.outputPageCount == 1)
-        expectBoxes(env.out, page: 0, size: w.size)
+        expectBoxes(env.out, page: 0, size: w.size, origin: userOrigin(env.src, w))
         expectViewportAspect(env.out, pages: 1)
     }
 
@@ -91,15 +99,13 @@ private func words(_ s: String?) -> [String] {
 
         let w = TestPDF.window(x: 100, y: 80, width: 300)               // página: x 100…400, y 80…536,86
         let report = try await env.write(TestPDF.plan([(0, w)]))
-        // Arquivo de ~5 KB: o custo fixo do deslocamento de origem por página (ver
-        // originShiftOverheadIsSmallAndConstantPerPage) já o deixava logo abaixo de 1,1×, e o
-        // destino do link regravado em coordenadas deslocadas soma ~10 bytes, cruzando
-        // 1,1×. O orçamento de tamanho é provado em inPlaceOutputStaysWithinSizeBudget;
-        // aqui só nenhum outro aviso pode aparecer.
+        // Arquivo de ~5 KB: a regravação pelo qpdf (object streams) pode mudar o tamanho de um
+        // arquivo minúsculo além de 1,1×. O orçamento de tamanho é provado em
+        // inPlaceOutputStaysWithinSizeBudget; aqui só nenhum outro aviso pode aparecer.
         #expect(report.warnings.filter { if case .sizeBudgetExceeded = $0 { false } else { true } }.isEmpty)
 
         let expectedUser = CGRect(x: 600 - w.maxY, y: 120, width: w.height, height: w.width)
-        expectBoxes(env.out, page: 0, size: expectedUser.size)
+        expectBoxes(env.out, page: 0, size: expectedUser.size, origin: expectedUser.origin)
         expectViewportAspect(env.out, pages: 1)
 
         // Posição provada por render: marcador em página = (150,200) - origem da janela.
@@ -107,14 +113,14 @@ private func words(_ s: String?) -> [String] {
         #expect(near(ink.minX, 50, 1.5) && near(ink.minY, 120, 1.5) && near(ink.width, 100, 1.5) && near(ink.height, 120, 1.5),
                 "ink \(ink)")
 
-        // Anotações acompanham o deslocamento da caixa (origem do usuário → (0,0)).
+        // Anotações no mesmo espaço do usuário: a caixa muda, as coordenadas não.
         let page = PDFDocument(url: env.out)!.page(at: 0)!
         #expect(page.rotation == 90)
         let annots = page.annotations
         let hl = try #require(annots.first { $0.type == "Highlight" })
         let link = try #require(annots.first { $0.type == "Link" })
-        #expect(near(hl.bounds.minX, 100 - expectedUser.minX, 0.05) && near(hl.bounds.minY, 200 - expectedUser.minY, 0.05))
-        #expect(near(link.bounds.minX, 160 - expectedUser.minX, 0.05) && near(link.bounds.minY, 120 - expectedUser.minY, 0.05))
+        #expect(near(hl.bounds.minX, 100, 0.05) && near(hl.bounds.minY, 200, 0.05))
+        #expect(near(link.bounds.minX, 160, 0.05) && near(link.bounds.minY, 120, 0.05))
     }
 
     /// /Rotate 90 com espaço de página definido por uma caixa efetiva menor que
@@ -137,7 +143,7 @@ private func words(_ s: String?) -> [String] {
         _ = try await env.write(plan)
 
         let expectedUser = g.toUser(w)
-        expectBoxes(env.out, page: 0, size: expectedUser.size)
+        expectBoxes(env.out, page: 0, size: expectedUser.size, origin: expectedUser.standardized.origin)
         // Marcador em espaço de página (pela geometria do plano) menos a origem da janela.
         let m = g.toPage(p.marker!)
         let ink = try #require(TestPDF.inkRect(env.out, page: 0))
@@ -160,7 +166,7 @@ private func words(_ s: String?) -> [String] {
 
         let w = CGRect(x: 300, y: 350, width: 150, height: 150 * TestPDF.viewport.aspect)
         try await env.write(TestPDF.plan([(0, w)]))
-        expectBoxes(env.out, page: 0, size: CGSize(width: w.height, height: w.width))
+        expectBoxes(env.out, page: 0, size: CGSize(width: w.height, height: w.width), origin: userOrigin(env.src, w))
         let ink = try #require(TestPDF.inkRect(env.out, page: 0))
         #expect(near(ink.minX, 50, 1.5) && near(ink.minY, 30, 1.5) && near(ink.width, 50, 1.5) && near(ink.height, 50, 1.5), "ink \(ink)")
         expectViewportAspect(env.out, pages: 1)
@@ -175,10 +181,29 @@ private func words(_ s: String?) -> [String] {
         try TestPDF.build(TestDocSpec(pages: [p]), to: env.src)
         let w = TestPDF.window(x: -100, y: -100, width: 800)
         try await env.write(TestPDF.plan([(0, w)]))
-        expectBoxes(env.out, page: 0, size: w.size)
+        expectBoxes(env.out, page: 0, size: w.size, origin: userOrigin(env.src, w))
         let ink = try #require(TestPDF.inkRect(env.out, page: 0))
         #expect(near(ink.minX, 400, 1.5) && near(ink.minY, 400, 1.5) && near(ink.width, 50, 1.5), "ink \(ink)")
         expectViewportAspect(env.out, pages: 1)
+    }
+
+    /// INC-22: janela maior que a área visível (capa com sangria, aba de índice na borda):
+    /// o que está fora da CropBox original continua invisível na saída.
+    @Test func windowBeyondCropBoxHidesBleed() async throws {
+        let env = Env(); defer { env.cleanup() }
+        try TestPDF.rawPDF(media: CGRect(x: 0, y: 0, width: 600, height: 800),
+                           crop: CGRect(x: 100, y: 100, width: 400, height: 600), rotate: 0,
+                           content: "0 g 200 300 50 50 re f 20 20 60 60 re f", to: env.src)
+        let before = try #require(TestPDF.inkRect(env.src, page: 0))
+        #expect(near(before.width, 50, 1.5), "sangria já invisível na origem: \(before)")
+        let w = TestPDF.window(x: -90, y: -90, width: 600)
+        try await env.write(TestPDF.plan([(0, w)]))
+        expectBoxes(env.out, page: 0, size: w.size, origin: userOrigin(env.src, w))
+        let ink = try #require(TestPDF.inkRect(env.out, page: 0))
+        // Só o marcador visível: (200,300) − origem da janela (−90,−90); o de (20,20), dentro
+        // da janela mas fora da CropBox, não aparece.
+        #expect(near(ink.minX, 290, 1.5) && near(ink.minY, 390, 1.5) && near(ink.width, 50, 1.5)
+                && near(ink.height, 50, 1.5), "ink \(ink)")
     }
 
     // MARK: páginas, ordem, navegação
@@ -335,8 +360,8 @@ private func words(_ s: String?) -> [String] {
         #expect(!r.report.warnings.contains { if case .sizeBudgetExceeded = $0 { true } else { false } })
     }
 
-    /// Com a origem deslocada o PDFKit acrescenta um custo fixo por página (~0,8 kB: não
-    /// duplica conteúdo). Em páginas minúsculas isso passa de 1,1×; o teste fixa o custo, não a razão.
+    /// Custo fixo por página da gravação em lugar (caixas novas; nada de conteúdo duplicado).
+    /// Em páginas minúsculas isso pode passar de 1,1×; o teste fixa o custo, não a razão.
     @Test func originShiftOverheadIsSmallAndConstantPerPage() async throws {
         let small = try await inPlaceRatio(noiseSide: 0, pages: 30)
         let big = try await inPlaceRatio(noiseSide: 120, pages: 30)
@@ -472,13 +497,14 @@ private func words(_ s: String?) -> [String] {
             #expect(e == .wrongPassword(env.src))
         }
         let report = try await env.write(plan, password: "usuario")
-        // Sai sem senha (o PDFKit mantém um dicionário /Encrypt com senhas vazias), mas o
-        // Producer não pode ser regravado: as strings do Info estão cifradas.
+        // Sai sem criptografia (o qpdf grava em claro), então o Producer também é gravado.
         let out = PDFDocument(url: env.out)!
-        #expect(!out.isLocked)
-        #expect(report.warnings.contains(.producerNotApplied))
+        #expect(!out.isLocked && !out.isEncrypted)
+        #expect(!report.warnings.contains(.producerNotApplied))
+        #expect(producer(env.out) == "iPDFmini \(PDFWriting.version) recipe:\(plan.recipe.id)")
         #expect((out.string ?? "").contains("p0l0"))
-        expectBoxes(env.out, page: 0, size: TestPDF.window(x: 0, y: 0, width: 590).size)
+        let w = TestPDF.window(x: 0, y: 0, width: 590)
+        expectBoxes(env.out, page: 0, size: w.size, origin: userOrigin(env.src, w))
     }
 
     @Test func missingSourceFailsToOpen() async throws {

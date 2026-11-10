@@ -57,6 +57,28 @@ import Testing
         #expect(try c.conversion.options().removeHeaderFooter)
     }
 
+    /// INC-22: padrão 1 → 1; `--allow-split` libera E3–E5; forçar fatias implica permitir.
+    @Test func allowSplitFlagAndDefaultOnePagePerPage() async throws {
+        let plain = try #require(try IPDFMini.parseAsRoot(["plan", "x.pdf"]) as? Plan)
+        #expect(!plain.conversion.allowSplit)
+        #expect(try !plain.conversion.options().allowSplitting)
+        #expect(try !plain.conversion.options().splittingAllowed)
+        let split = try #require(try IPDFMini.parseAsRoot(["plan", "x.pdf", "--allow-split"]) as? Plan)
+        #expect(try split.conversion.options().allowSplitting)
+        let forced = try #require(try IPDFMini.parseAsRoot(["plan", "x.pdf", "--mode", "columns"]) as? Plan)
+        #expect(try forced.conversion.options().splittingAllowed)
+        #expect(IPDFMini.helpMessage(for: Plan.self).contains("--allow-split"))
+
+        // Ponta a ponta: o artigo em duas colunas vai para E5 com a divisão e fica 1 → 1 sem ela.
+        let src = try TestFiles.source(.arxivTwoColumn)
+        let pages = try #require(PDFDocument(url: src)).pageCount
+        let one = TestFiles.url("cli.arxiv.default.pdf"), many = TestFiles.url("cli.arxiv.split.pdf")
+        try await run(["convert", src.path, "-o", one.path])
+        try await run(["convert", src.path, "-o", many.path, "--allow-split"])
+        #expect(try #require(PDFDocument(url: one)).pageCount == pages)
+        #expect(try #require(PDFDocument(url: many)).pageCount > pages)
+    }
+
     @Test func sliceModesAcceptPortugueseEnglishAndStrategyNames() throws {
         let cases: [(String, ConversionMode)] = [
             ("landscape", .landscapeSlices), ("paisagem", .landscapeSlices), ("E3", .landscapeSlices),

@@ -107,12 +107,16 @@ struct ConversionArguments: ParsableArguments {
     var profile: String = ViewportProfile.booksPortrait.id
 
     @Option(help: ArgumentHelp(
-        "Estratégia: auto (motor de decisão), passthrough|direta (E0), crop|recorte (E1), aggressive|agressivo (E2, sem cabeçalho/rodapé), landscape|paisagem (E3, fatias em paisagem), portrait|retrato (E4, fatias em retrato) ou columns|colunas (E5). Aceita também E0–E5.",
+        "Estratégia: auto (motor de decisão), passthrough|direta (E0), crop|recorte (E1), aggressive|agressivo (E2, sem cabeçalho/rodapé), landscape|paisagem (E3, fatias em paisagem), portrait|retrato (E4, fatias em retrato) ou columns|colunas (E5). Aceita também E0–E5. Forçar E3, E4 ou E5 implica --allow-split.",
         valueName: "modo"))
     var mode: ConversionMode = .auto
 
     @Flag(name: .customLong("remove-headers"), help: "Deixa o modo auto remover cabeçalho, rodapé e número de página (E2).")
     var removeHeaders = false
+
+    @Flag(name: .customLong("allow-split"),
+          help: "Permite dividir páginas (E3 fatias em paisagem, E4 fatias em retrato, E5 colunas): uma página de origem pode virar várias telas. Sem isto, 1 página de origem → 1 página de saída.")
+    var allowSplit = false
 
     @Option(name: .customLong("margin-mm"), help: "Respiro em cada lado, em mm.")
     var marginMM: Double = 2
@@ -132,7 +136,8 @@ struct ConversionArguments: ParsableArguments {
         var recipe = Recipe()
         recipe.marginMM = marginMM
         recipe.classMode = classMode
-        return ConversionOptions(profile: p, mode: mode, recipe: recipe, password: password, removeHeaderFooter: removeHeaders)
+        return ConversionOptions(profile: p, mode: mode, recipe: recipe, password: password, removeHeaderFooter: removeHeaders,
+                                 allowSplitting: allowSplit)
     }
 }
 
@@ -253,8 +258,10 @@ enum Text {
         return out.joined(separator: "\n")
     }
 
-    static func candidates(_ c: [CandidateSummary], chosen: Int) -> [String] {
-        var out = ["Candidatos: " + c.map(\.line).joined(separator: " · ")]
+    static func candidates(_ c: [CandidateSummary], chosen: Int, allowSplitting: Bool) -> [String] {
+        var out = [allowSplitting ? "Divisão de páginas: permitida (E3–E5 candidatos)"
+                                  : "Divisão de páginas: desligada (1 página de origem → 1 página de saída)"]
+        out.append("Candidatos: " + c.map(\.line).joined(separator: " · "))
         let ch = c[chosen]
         out.append("Escolhido: \(ch.line) [\(ch.strategy.rawValue), perfil \(ch.profileID)]")
         for r in ch.risks { out.append("  risco: \(r)") }
@@ -271,7 +278,7 @@ enum Text {
 
     static func plan(_ r: PlanResult) -> String {
         var out = [analysis(AnalysisSummary(r.analysis)), ""]
-        out += candidates(r.candidates, chosen: r.chosenIndex)
+        out += candidates(r.candidates, chosen: r.chosenIndex, allowSplitting: r.allowSplitting)
         if r.mode != .auto { out.append("  (modo \(r.mode.rawValue) forçado)") }
         out += planLines(r.plan)
         return out.joined(separator: "\n")
@@ -279,7 +286,7 @@ enum Text {
 
     static func conversion(_ r: ConversionReport) -> String {
         var out = ["Entrada: \(r.input)", analysis(r.analysis), ""]
-        out += candidates(r.candidates, chosen: r.chosenIndex)
+        out += candidates(r.candidates, chosen: r.chosenIndex, allowSplitting: r.allowSplitting)
         if r.mode != .auto { out.append("  (modo \(r.mode.rawValue) forçado)") }
         out += planLines(r.plan)
         out.append("Saída: \(r.output) · \(r.write.outputPageCount) páginas · \(r.write.bytes) bytes")

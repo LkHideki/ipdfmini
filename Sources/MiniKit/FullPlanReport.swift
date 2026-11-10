@@ -14,6 +14,8 @@ public struct FullPlanReport: Codable, Sendable, Equatable {
     public var plan: LayoutPlan
     /// Itens do sumário da origem; `nil` em JSON de versões anteriores.
     public var sourceOutlineItems: Int? = nil
+    /// Divisão de páginas efetiva; JSON de versões anteriores decodifica como `false`.
+    @DefaultsToFalse public var allowSplitting: Bool
 
     public init(_ r: PlanResult, sourceOutlineItems: Int? = nil) {
         self.sourceOutlineItems = sourceOutlineItems
@@ -22,10 +24,12 @@ public struct FullPlanReport: Codable, Sendable, Equatable {
         chosenIndex = r.chosenIndex
         mode = r.mode
         plan = r.plan
+        allowSplitting = r.allowSplitting
     }
 
     /// Volta ao tipo da fachada (o init memberwise de `PlanResult` é interno).
     public var planResult: PlanResult {
-        PlanResult(analysis: analysis, candidates: candidates, chosenIndex: chosenIndex, mode: mode, plan: plan)
+        PlanResult(analysis: analysis, candidates: candidates, chosenIndex: chosenIndex, mode: mode, plan: plan,
+                   allowSplitting: allowSplitting)
     }
 }

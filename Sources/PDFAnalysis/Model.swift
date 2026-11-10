@@ -141,7 +141,8 @@ public struct PageAnalysis: Codable, Sendable, Equatable {
 }
 
 public struct DocumentAnalysis: Codable, Sendable, Equatable {
-    public static let analyzerVersion = 2
+    /// 3: fólio corrido com título variável vira cabeçalho/rodapé (INC-22).
+    public static let analyzerVersion = 3
 
     public var sha256: String
     public var analyzerVersion: Int

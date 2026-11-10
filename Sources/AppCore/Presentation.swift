@@ -112,6 +112,15 @@ public enum Labels {
         }
     }
 
+    /// Modos do seletor: os de fatias e colunas só com a divisão de páginas permitida.
+    public static func modes(allowSplitting: Bool) -> [ConversionMode] {
+        modes.filter { allowSplitting || !$0.splitsPages }
+    }
+
+    /// Interruptor do inspetor e a linha que explica o custo.
+    public static let allowSplittingTitle = "Permitir dividir páginas (fatias e colunas)"
+    public static let allowSplittingFooter = "Cada página do original pode virar várias telas no iPad. Desligado, cada página do original vira exatamente uma tela."
+
     public static func mode(_ m: ConversionMode) -> String {
         if let n = modeNames[m.rawValue] { return n }
         return strategy(for: m).map(strategy) ?? m.rawValue

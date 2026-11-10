@@ -46,6 +46,9 @@ struct SliceSegment: Sendable {
     var sidesFree: Bool
     /// Fluxo principal (corpo): entra no aviso de legibilidade e na exceção de escala.
     var isBody: Bool
+    /// Só rodapé corrido no fim da página (E5, um segmento por bloco): leva junto o
+    /// último fragmento quando não cabe embaixo dele, para não ficar sozinho numa tela.
+    var trailingFurniture = false
 
     var isException: Bool { scale < nominal * (1 - 1e-9) }
 
@@ -210,8 +213,12 @@ struct PageComposer {
         if seg.isBody, seg.isException {
             warnings.append(.scaleException(page: page.index, classScale: seg.nominal, pageScale: seg.scale))
         }
-        let groups = SliceUnits.groups(seg.units)
         let cap = g.capacity(seg.sidesFree)
+        if seg.trailingFurniture, let c = cursor, cur.count >= 2,
+           SliceUnits.hull(seg.units[...]).height * seg.scale > c - g.gap - g.padBottom(seg.sidesFree) {
+            carryLastToFreshPage()
+        }
+        let groups = SliceUnits.glueFurniture(SliceUnits.groups(seg.units), seg.units)
         var run: [Range<Int>] = []
         for gr in groups {
             let r = SliceUnits.hull(seg.units[gr])
@@ -224,6 +231,20 @@ struct PageComposer {
             }
         }
         place(run, seg, final: final)
+    }
+
+    /// Fecha a página corrente sem o último fragmento e o põe no topo de uma nova.
+    /// Topo pelo respiro dos cantos: vale para qualquer folga lateral.
+    mutating func carryLastToFreshPage() {
+        let p = cur.removeLast()
+        flush()
+        let s = p.scale, t = p.transform
+        let top = g.size.height - g.padTop(false)
+        let bottom = top - p.sourceRect.height * s
+        var moved = p
+        moved.transform = CGAffineTransform(a: t.a, b: t.b, c: t.c, d: t.d, tx: t.tx, ty: bottom - p.sourceRect.minY * s)
+        cur = [moved]
+        cursor = bottom
     }
 
     /// Fatia uma sequência de grupos que cabem na tela, por DP.

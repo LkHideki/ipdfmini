@@ -85,6 +85,45 @@ private enum Tree {
         #expect(QueueNotice.text(added: 6, duplicates: 0, rejected: 1, folders: 2)
                 == "6 PDFs adicionados de 2 pastas · 1 item ignorado (não é PDF).")
     }
+
+    /// Remover a pasta da lista só deslista: os arquivos ficam no disco, as subpastas que
+    /// vieram com ela saem juntas, a outra pasta fica, e arrastar de novo a traz de volta.
+    @Test func removingFolderOnlyUnlistsAndCanBeReadded() throws {
+        let root = try Tree.make("unlist"), other = try Tree.make("keep")
+        var q = BatchQueue()
+        q.add(FolderScanner.scan([root]).found)
+        q.add(FolderScanner.scan([other]).found)
+        let files = q.entries.map(\.url)
+        let groups = q.groups
+        #expect(groups.count == 2)
+        let ids = q.entries.map(\.id)
+        let gone = q.removeGroup(root: groups[0].root)
+        #expect(gone == Array(ids.prefix(3)))
+        #expect(q.entries.map(\.id) == Array(ids.suffix(3)))
+        #expect(q.groups.map(\.root.path) == [groups[1].root.path])
+        // Nada apagado nem movido.
+        for u in files { #expect(FileManager.default.fileExists(atPath: u.path), "\(u.path)") }
+        #expect(FolderScanner.scan([root]).found.count == 3)
+        // Readicionar a mesma pasta funciona (não conta como repetida).
+        let back = q.add(FolderScanner.scan([root]).found)
+        #expect(back.added.count == 3 && back.duplicates == 0)
+        #expect(q.entries.count == 6)
+        #expect(q.removeGroup(root: URL(fileURLWithPath: "/nao/existe")).isEmpty)
+        #expect(QueueNotice.folderRemoved("Livros", count: 3)
+                == "Pasta Livros removida da lista (3 PDFs) — os arquivos continuam no disco")
+        #expect(QueueNotice.folderRemoved("X", count: 1) == "Pasta X removida da lista (1 PDF) — os arquivos continuam no disco")
+    }
+
+    @Test func selectionAfterRemovingFolder() {
+        let order = ["a1", "a2", "b1", "b2", "c1"]
+        // Selecionado ficou: não muda.
+        #expect(BatchQueue.selection(after: ["a1", "a2"], current: "c1", before: order) == "c1")
+        // Selecionado saiu: o próximo que sobrou; no fim, o anterior; nada sobrou, tela vazia.
+        #expect(BatchQueue.selection(after: ["b1", "b2"], current: "b1", before: order) == "c1")
+        #expect(BatchQueue.selection(after: ["c1"], current: "c1", before: order) == "b2")
+        #expect(BatchQueue.selection(after: Set(order), current: "a2", before: order) == nil)
+        #expect(BatchQueue.selection(after: ["a1"], current: nil, before: order) == nil)
+    }
 }
 
 // MARK: - Fila, grupos e opt-out
@@ -144,6 +183,12 @@ private enum Tree {
         #expect(s.effective("c").marginMM == 5)
         s.reset("c")
         #expect(s.effective("c") == cols)
+        // INC-22: a divisão vale por documento e no padrão do lote; de fábrica, desligada.
+        #expect(!SettingsStore().defaults.allowSplitting && !SettingsStore().effective("x").allowSplitting)
+        s.set("d", ConversionSettings(allowSplitting: true))
+        #expect(s.effective("d").allowSplitting && !s.effective("b").allowSplitting)
+        s.makeDefault(from: "d")
+        #expect(s.effective("b").allowSplitting)
     }
 }
 
@@ -391,7 +436,10 @@ private actor Counter {
         let client = try Helper.client()
         let input = c.scenario == "arxivTwoColumn" ? try await Self.arxivWithOutline() : try await CorpusFiles.shared.pdf(c.scenario)
         let output = Scratch.url("e2e-\(c.testDescription) — mini.pdf")
-        let r = try await client.convert(input: input, output: output, settings: ConversionSettings(mode: c.mode, classMode: .all))
+        // Fatias e colunas só com a divisão permitida (INC-22); sem ela o modo vira automático.
+        let r = try await client.convert(input: input, output: output,
+                                         settings: ConversionSettings(mode: c.mode, classMode: .all,
+                                                                      allowSplitting: c.writer == .placement))
         #expect(WriterKind(strategy: r.plan.recipe.strategy) == c.writer)
         let inv5 = try #require(r.validation?.result("5"))
         #expect(inv5.status == .passed, "\(inv5.detail)")

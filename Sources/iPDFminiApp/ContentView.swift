@@ -273,9 +273,24 @@ struct GroupHeader: View {
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
             Spacer(minLength: 4)
+            let busy = library.folderInRunningBatch(group)
+            Button {
+                library.removeFolder(group)
+            } label: {
+                Image(systemName: "minus.circle")
+            }
+            .buttonStyle(.borderless)
+            .fixedSize()
+            .disabled(busy)
+            .help(busy ? "Pasta em conversão no lote: remova depois que o lote terminar"
+                       : "Remover pasta da lista (os arquivos continuam no disco)")
+            .accessibilityLabel("Remover pasta da lista")
             Menu {
                 Button("Marcar todos desta pasta") { library.setIncluded(group: group, true) }
                 Button("Desmarcar todos desta pasta") { library.setIncluded(group: group, false) }
+                Divider()
+                Button("Remover pasta da lista") { library.removeFolder(group) }
+                    .disabled(busy)
             } label: {
                 Image(systemName: "ellipsis.circle")
             }
@@ -285,6 +300,10 @@ struct GroupHeader: View {
             .accessibilityLabel("Ações da pasta \(group.title)")
         }
         .help(group.root.path(percentEncoded: false))
+        .contextMenu {
+            Button("Remover pasta da lista") { library.removeFolder(group) }
+                .disabled(library.folderInRunningBatch(group))
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Pasta \(group.title), \(group.includedCount) de \(group.entries.count) incluídos")
     }

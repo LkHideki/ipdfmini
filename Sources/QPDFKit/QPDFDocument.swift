@@ -189,6 +189,23 @@ public final class QPDFDocument {
         try call { err, cap in ipm_set_outline(handle, Int32(items.count), t, parents, d, open, err, cap) }
     }
 
+    /// Escritor por caixas: `box` vira todas as caixas da página de origem (espaço do usuário,
+    /// sem `/Rotate`); com `clip`, o conteúdo fica recortado a ele (área visível original).
+    public func setSourcePageBoxes(_ sourcePage: Int, box: QPDFRect, clip: QPDFRect?) throws {
+        try call { err, cap in
+            if let clip {
+                ipm_set_source_page_boxes(handle, Int32(clamping: sourcePage), box.array, clip.array, err, cap)
+            } else {
+                ipm_set_source_page_boxes(handle, Int32(clamping: sourcePage), box.array, nil, err, cap)
+            }
+        }
+    }
+
+    /// Tira uma página de origem do documento (índices das demais não mudam).
+    public func removeSourcePage(_ sourcePage: Int) throws {
+        try call { err, cap in ipm_remove_source_page(handle, Int32(clamping: sourcePage), err, cap) }
+    }
+
     /// Remove as páginas originais; só as de saída ficam no arquivo.
     public func removeSourcePages() throws {
         try call { err, cap in ipm_remove_source_pages(handle, err, cap) }

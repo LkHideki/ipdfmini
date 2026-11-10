@@ -3,8 +3,9 @@ import PDFKit
 import CoreGraphics
 import MiniGeometry
 import LayoutEngine
+import QPDFKit
 
-/// Escritor por caixas (PDFKit). PLAN.md §9.1 e §6.4.
+/// Escritor por caixas. PLAN.md §9.1 e §6.4.
 ///
 /// Só altera as caixas das páginas; o content stream, o sumário, os links e as
 /// anotações ficam como estão. Aceita planos de 1 colocação por página de saída
@@ -15,6 +16,14 @@ public struct BoxWriter: PDFWriter {
     public func write(_ plan: LayoutPlan, source: SourceDocument, to url: URL,
                       options: WriteOptions) async throws -> WriteReport {
         try Self.validateStructure(plan)
+        // Plano 1 → 1 (cada página no máximo uma vez, na ordem, como E0–E2): caixas gravadas
+        // pelo qpdf. A gravação do PDFKit reescreve o arquivo inteiro sem object streams
+        // (medido em livros O'Reilly: 1,29–1,40× só por abrir e gravar), acima do orçamento
+        // de 1,1× do §9.3; o qpdf mantém streams e estrutura e só troca as caixas.
+        let sources = plan.pages.map { $0.placements[0].sourcePage }
+        if zip(sources, sources.dropFirst()).allSatisfy({ $0 < $1 }) {
+            return try Self.writeInPlace(plan, source: source, to: url, options: options)
+        }
 
         guard let doc = PDFDocument(url: source.url) else { throw WriteError.cannotOpen(source.url) }
         if doc.isLocked {
@@ -102,6 +111,62 @@ public struct BoxWriter: PDFWriter {
 
         let bytes = Self.fileSize(url)
         let sourceBytes = Self.fileSize(source.url)
+        if sourceBytes > 0 {
+            let ratio = Double(bytes) / Double(sourceBytes)
+            if ratio > 1.1 { warnings.append(.sizeBudgetExceeded(ratio: ratio, budget: 1.1)) }
+        }
+        return WriteReport(outputPageCount: plan.pages.count, bytes: bytes, warnings: warnings)
+    }
+
+    // MARK: - qpdf (caixas em lugar)
+
+    /// Caixas = janela (espaço do usuário). Janela maior que a área visível original (página
+    /// mais larga que o viewport, sangria de capa, aba de índice na borda) ganha recorte na
+    /// área visível: sem isso a sangria fora da CropBox aparecia na saída. Sem translação de
+    /// origem (diferente do PDFKit, S2), destinos e anotações seguem válidos como estão.
+    static func writeInPlace(_ plan: LayoutPlan, source: SourceDocument, to url: URL,
+                             options: WriteOptions) throws -> WriteReport {
+        let doc = try PlacementWriter.open(source)
+        let count = try doc.sourcePageCount
+        var warnings: [WriteWarning] = []
+        var used = Set<Int>()
+        for (i, out) in plan.pages.enumerated() {
+            let placement = out.placements[0]
+            let s = placement.sourcePage
+            guard (0..<count).contains(s) else {
+                throw WriteError.unsupportedPlan("página de saída \(i) usa a página de origem \(s); o PDF tem \(count)")
+            }
+            used.insert(s)
+            let info = try doc.sourcePageInfo(at: s)
+            let visible = info.mediaBox.cgRect.intersection(info.cropBox.cgRect)
+            let geometry = placement.sourceGeometry
+                ?? PageGeometry(effectiveBox: visible.isNull || visible.isEmpty ? info.mediaBox.cgRect : visible,
+                                rotation: info.rotation)
+            let box = geometry.toUser(placement.sourceRect).standardized
+            let eps: CGFloat = 1e-3
+            let needsClip = !visible.isNull && !visible.isEmpty && !visible.insetBy(dx: -eps, dy: -eps).contains(box)
+            try doc.setSourcePageBoxes(s, box: QPDFRect(box), clip: needsClip ? QPDFRect(visible) : nil)
+
+            let aspectOut = out.sizePt.width / out.sizePt.height
+            let aspectBox = placement.sourceRect.width / placement.sourceRect.height
+            let error = abs(aspectBox / aspectOut - 1)
+            if error > 0.001 { warnings.append(.aspectMismatch(outputPage: i, relativeError: Double(error))) }
+            if !out.overlays.isEmpty { warnings.append(.overlaysIgnored(count: out.overlays.count)) }
+        }
+        for s in stride(from: count - 1, through: 0, by: -1) where !used.contains(s) { try doc.removeSourcePage(s) }
+        if options.clearMetadata {
+            for key in ["/Title", "/Author", "/Subject", "/Keywords", "/Creator"] { try doc.setInfo(key, nil) }
+        }
+        if let t = options.title { try doc.setInfo("/Title", t) }
+        if let a = options.author { try doc.setInfo("/Author", a) }
+        try doc.setInfo("/Producer", "\(options.producer) recipe:\(options.recipeID ?? plan.recipe.id)")
+        do {
+            try doc.write(to: url)
+        } catch {
+            throw WriteError.writeFailed(url)
+        }
+        let bytes = fileSize(url)
+        let sourceBytes = fileSize(source.url)
         if sourceBytes > 0 {
             let ratio = Double(bytes) / Double(sourceBytes)
             if ratio > 1.1 { warnings.append(.sizeBudgetExceeded(ratio: ratio, budget: 1.1)) }
@@ -214,3 +279,4 @@ public struct BoxWriter: PDFWriter {
         return n?.int64Value ?? 0
     }
 }
+

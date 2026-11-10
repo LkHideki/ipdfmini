@@ -112,6 +112,18 @@ int ipm_set_info_entry(ipm_doc* doc, const char* key, const char* value, char* e
 int ipm_set_outline(ipm_doc* doc, int count, const char* const* titles, const int* parents,
                     const char* const* destinations, const int* open, char* error, size_t error_capacity);
 
+/*
+ * Escritor por caixas: grava `box` (espaço do usuário da página, sem /Rotate) como MediaBox,
+ * CropBox, TrimBox, BleedBox e ArtBox da página de origem, sem tocar no content stream. Com
+ * `clip` != NULL, envolve o conteúdo em "q clip re W n … Q": o que estava fora da área visível
+ * original (sangria) continua invisível mesmo com a caixa maior que a página.
+ */
+int ipm_set_source_page_boxes(ipm_doc* doc, int source_page, const double* box /*[4]*/, const double* clip /*[4]*/,
+                              char* error, size_t error_capacity);
+
+/* Remove uma página de origem da árvore de páginas (índice da abertura; os demais não mudam). */
+int ipm_remove_source_page(ipm_doc* doc, int source_page, char* error, size_t error_capacity);
+
 /* Remove as páginas originais da árvore de páginas; só as de saída ficam no documento. */
 int ipm_remove_source_pages(ipm_doc* doc, char* error, size_t error_capacity);
 

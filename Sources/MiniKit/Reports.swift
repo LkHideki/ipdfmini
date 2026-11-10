@@ -7,6 +7,31 @@ import PDFWriting
 
 // Relatórios da fachada. Codable para `--json`; textos em português para a CLI e o app.
 
+/// Booleano que decodifica como `false` quando a chave falta: JSON de versões
+/// anteriores (sem o campo) continua legível e cai no padrão seguro.
+@propertyWrapper
+public struct DefaultsToFalse: Codable, Sendable, Equatable {
+    public var wrappedValue: Bool
+
+    public init(wrappedValue: Bool) { self.wrappedValue = wrappedValue }
+
+    public init(from decoder: any Decoder) throws {
+        wrappedValue = try decoder.singleValueContainer().decode(Bool.self)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var c = encoder.singleValueContainer()
+        try c.encode(wrappedValue)
+    }
+}
+
+public extension KeyedDecodingContainer {
+    /// Usado pelo `init(from:)` sintetizado de quem tem um campo `@DefaultsToFalse`.
+    func decode(_ type: DefaultsToFalse.Type, forKey key: Key) throws -> DefaultsToFalse {
+        DefaultsToFalse(wrappedValue: try decodeIfPresent(Bool.self, forKey: key) ?? false)
+    }
+}
+
 /// Resumo da análise para exibição (a análise completa vai em `PlanResult.analysis`).
 public struct AnalysisSummary: Codable, Sendable, Equatable {
     public struct SizeGroup: Codable, Sendable, Equatable {
@@ -99,6 +124,8 @@ public struct PlanResult: Sendable, Equatable {
     public var chosenIndex: Int
     public var mode: ConversionMode
     public var plan: LayoutPlan
+    /// Divisão de páginas efetiva no planejamento (E3–E5 candidatos).
+    public var allowSplitting: Bool = false
 
     public var chosen: CandidateSummary { candidates[chosenIndex] }
 }
@@ -110,6 +137,7 @@ public struct PlanReport: Codable, Sendable, Equatable {
     public var chosenIndex: Int
     public var mode: ConversionMode
     public var plan: LayoutPlan
+    @DefaultsToFalse public var allowSplitting: Bool
 
     public init(_ r: PlanResult) {
         analysis = AnalysisSummary(r.analysis)
@@ -117,6 +145,7 @@ public struct PlanReport: Codable, Sendable, Equatable {
         chosenIndex = r.chosenIndex
         mode = r.mode
         plan = r.plan
+        allowSplitting = r.allowSplitting
     }
 }
 
@@ -133,6 +162,8 @@ public struct ConversionReport: Codable, Sendable, Equatable {
     public var validation: ValidationReport?
     /// Contagens de sumário e links (aditivo: JSON de versões anteriores não traz).
     public var navigation: NavigationSummary? = nil
+    /// Divisão de páginas efetiva (aditivo: JSON antigo decodifica como `false`).
+    @DefaultsToFalse public var allowSplitting: Bool = false
 
     public var chosen: CandidateSummary { candidates[chosenIndex] }
     /// Sem validação conta como aprovado: quem desligou assumiu o risco.

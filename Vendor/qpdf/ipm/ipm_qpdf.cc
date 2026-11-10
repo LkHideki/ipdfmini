@@ -558,6 +558,44 @@ int ipm_set_outline(ipm_doc* doc, int count, const char* const* titles, const in
     });
 }
 
+int ipm_set_source_page_boxes(ipm_doc* doc, int source_page, const double* box, const double* clip, char* error,
+                              size_t error_capacity) {
+    return guarded(error, error_capacity, [&] {
+        ipm_doc& d = require_doc(doc);
+        require_finite(box, 4, "box");
+        QPDFPageObjectHelper& page = source_at(d, source_page);
+        auto r = normalized({box[0], box[1], box[2], box[3]});
+        if (!(r.llx < r.urx && r.lly < r.ury)) {
+            fail(IPM_ERR_ARGUMENT, "box vazia");
+        }
+        QPDFObjectHandle dict = page.getObjectHandle();
+        for (char const* key : {"/MediaBox", "/CropBox", "/TrimBox", "/BleedBox", "/ArtBox"}) {
+            dict.replaceKey(key, QPDFObjectHandle::newFromRectangle(r));
+        }
+        if (clip != nullptr) {
+            require_finite(clip, 4, "clip");
+            auto c = normalized({clip[0], clip[1], clip[2], clip[3]});
+            std::string ops = "q ";
+            append_number(ops, c.llx);
+            append_number(ops, c.lly);
+            append_number(ops, c.urx - c.llx);
+            append_number(ops, c.ury - c.lly);
+            ops += "re W n\n";
+            // Quebras de linha nas pontas: streams vizinhos não colam tokens.
+            page.addPageContents(d.pdf->newStream(ops), true);
+            page.addPageContents(d.pdf->newStream("\nQ\n"), false);
+        }
+    });
+}
+
+int ipm_remove_source_page(ipm_doc* doc, int source_page, char* error, size_t error_capacity) {
+    return guarded(error, error_capacity, [&] {
+        ipm_doc& d = require_doc(doc);
+        QPDFPageObjectHelper& page = source_at(d, source_page);
+        QPDFPageDocumentHelper(*d.pdf).removePage(page);
+    });
+}
+
 int ipm_remove_source_pages(ipm_doc* doc, char* error, size_t error_capacity) {
     return guarded(error, error_capacity, [&] {
         ipm_doc& d = require_doc(doc);

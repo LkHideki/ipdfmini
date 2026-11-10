@@ -26,7 +26,7 @@ public struct Metric: Codable, Sendable, Equatable {
 }
 
 public struct InvariantResult: Codable, Sendable, Equatable {
-    /// "1a", "1b", "2" … "8".
+    /// "1a", "1b", "2" … "9".
     public var id: String
     public var title: String
     public var status: InvariantStatus
@@ -131,9 +131,12 @@ public struct Validator: Sendable {
     }
 
     /// `writer`: quem gravou `output`; `nil` = o da estratégia do plano.
+    /// `allowSplitting`: a divisão de páginas foi permitida (inv. 9 não se aplica);
+    /// `nil` = deduz da estratégia do plano (E3+ só existe com divisão).
     public func validate(analysis: DocumentAnalysis, plan: LayoutPlan, source: SourceDocument,
-                         output: URL, writer: WriterKind? = nil) async throws -> ValidationReport {
+                         output: URL, writer: WriterKind? = nil, allowSplitting: Bool? = nil) async throws -> ValidationReport {
         let writer = writer ?? WriterKind(strategy: plan.recipe.strategy)
+        let allowSplitting = allowSplitting ?? StrategyID.splitsPages(plan.recipe.strategy)
         let srcData = try Data(contentsOf: source.url, options: .mappedIfSafe)
         let outData = try Data(contentsOf: output, options: .mappedIfSafe)
         let password = source.password
@@ -174,6 +177,7 @@ public struct Validator: Sendable {
             results.append(roundTrip(plan: plan))
         }
         results.append(corners(outputProbes, plan: plan))
+        results.append(onePagePerPage(analysis: analysis, plan: plan, outCount: outCount, allowSplitting: allowSplitting))
         return ValidationReport(results: results)
     }
 
@@ -273,6 +277,15 @@ public struct Validator: Sendable {
         // Mesma limpeza da análise: em scan, salpico e faixa de scanner não são tinta.
         if scan { mask.clean(minArea: max(2, Int((map.pixelsPerPoint * map.pixelsPerPoint).rounded()))) }
         let total = Ink.sum(mask)
+        // Em scan a caixa da análise vai da primeira à última linha e coluna com ≥ k pixels
+        // (k = 1,5 px/pt): fio de 1 px que passa dela (medido: 8 px num scan real, 4 pt além
+        // da caixa) não é tinta para a análise e não pode ser "tinta cortada" aqui.
+        if scan, let b = Ink.boxWithAtLeast(mask, k: max(2, (1.5 * map.pixelsPerPoint).rounded())) {
+            mask.clear(x0: 0, y0: 0, x1: mask.width, y1: b.y0)
+            mask.clear(x0: 0, y0: b.y1, x1: mask.width, y1: mask.height)
+            mask.clear(x0: 0, y0: b.y0, x1: b.x0, y1: b.y1)
+            mask.clear(x0: b.x1, y0: b.y0, x1: mask.width, y1: b.y1)
+        }
 
         for out in plan.pages {
             for p in out.placements where p.sourcePage == a.index {
@@ -334,8 +347,8 @@ public struct Validator: Sendable {
     ///
     /// Referência de 1b, por colocação: a janela renderizada direto da origem, na
     /// escala da colocação e recortada à área visível da origem. Região comparada:
-    /// - BoxWriter: a página exibida inteira (escala 1). O PDFKit grava a página com a
-    ///   origem da MediaBox em (0,0) e translada o conteúdo (SPIKES.md, S2);
+    /// - BoxWriter: a página exibida inteira (escala 1), na grade da própria caixa (a origem
+    ///   fica na janela pelo qpdf, ou vai a (0,0) quando o PDFKit grava, SPIKES.md S2);
     /// - PlacementWriter: `transform(sourceRect)` na página de saída.
     /// As duas grades de pixels partem do mesmo canto da janela, então dá para
     /// comparar pixel a pixel, não só a contagem.
@@ -371,14 +384,23 @@ public struct Validator: Sendable {
         if let out, out.sizePt.width > 0 {
             let k = og.displaySize.width / out.sizePt.width
             for sq in og.pageBox.cornerSquares(radius: cornerRadius * k) {
-                // Só pixels com o centro no quadrado: o indicador de página encosta na borda
-                // do quadrado e o pixel de borda, arredondado para fora, mediria tinta de fora.
+                // Só pixels inteiros dentro do quadrado: o pixel de borda mistura cobertura de
+                // dentro e de fora, e tinta que só encosta na borda (indicador de página; aba
+                // de índice que o recorte deixa rente ao quadrado, fora da grade de pixels)
+                // acendia o pixel sem ter nada dentro do quadrado. Tinta de verdade lá dentro
+                // ocupa pixels inteiros.
                 let m = raster.mapping, s = m.pixelsPerPoint
-                let x0 = Int(((sq.minX - m.pageBox.minX) * s - 0.5).rounded(.up))
-                let x1 = Int(((sq.maxX - m.pageBox.minX) * s - 0.5).rounded(.up))
-                let y0 = Int(((m.pageBox.maxY - sq.maxY) * s - 0.5).rounded(.up))
-                let y1 = Int(((m.pageBox.maxY - sq.minY) * s - 0.5).rounded(.up))
-                cornerInk += Ink.sum(outMask, x0: x0, y0: y0, x1: x1, y1: y1)
+                let eps: CGFloat = 1e-6
+                let x0 = Int(((sq.minX - m.pageBox.minX) * s - eps).rounded(.up))
+                let x1 = Int(((sq.maxX - m.pageBox.minX) * s + eps).rounded(.down))
+                let y0 = Int(((m.pageBox.maxY - sq.maxY) * s - eps).rounded(.up))
+                let y1 = Int(((m.pageBox.maxY - sq.minY) * s + eps).rounded(.down))
+                // Sem a fileira de pixels da borda da página: ali cai o antialias do recorte e
+                // da imagem reamostrada que a janela corta (medido: página de anúncio O'Reilly,
+                // 24 px de cinza 212–234 numa linha e numa coluna, iguais na origem renderizada
+                // com a mesma janela). Glifo ou traço no canto ocupa mais que essa fileira.
+                cornerInk += Ink.sum(outMask, x0: max(x0, 1), y0: max(y0, 1),
+                                     x1: min(x1, outMask.width - 1), y1: min(y1, outMask.height - 1))
             }
         }
 
@@ -651,6 +673,44 @@ public struct Validator: Sendable {
                                outputPages: bad)
     }
 
+    /// Inv. 9: sem divisão permitida, a página de saída j mostra só a página de origem j.
+    /// O `LayoutPlan` não tem como declarar página omitida (página vazia sai inteira, com
+    /// aviso), então a contagem esperada é a da origem.
+    func onePagePerPage(analysis: DocumentAnalysis, plan: LayoutPlan, outCount: Int,
+                        allowSplitting: Bool) -> InvariantResult {
+        let title = "Uma página por página"
+        let n = analysis.pages.count
+        let metrics = [Metric("páginas de origem", Double(n)), Metric("páginas no plano", Double(plan.pages.count)),
+                       Metric("páginas de saída", Double(outCount))]
+        guard !allowSplitting else {
+            return InvariantResult(id: "9", title: title, status: .notApplicable,
+                                   detail: "divisão de páginas permitida: uma página de origem pode ocupar várias telas",
+                                   metrics: metrics)
+        }
+        var badOut: [Int] = [], badSrc = Set<Int>()
+        for (j, page) in plan.pages.enumerated() {
+            let sources = Set(page.placements.map(\.sourcePage))
+            let expected = j < n ? analysis.pages[j].index : nil
+            if sources.count != 1 || sources.first != expected {
+                badOut.append(j)
+                badSrc.formUnion(sources)
+            }
+        }
+        // Página de origem sem página de saída própria (plano curto).
+        if plan.pages.count < n { for k in plan.pages.count..<n { badSrc.insert(analysis.pages[k].index) } }
+        let ok = badOut.isEmpty && plan.pages.count == n && outCount == n
+        let detail: String
+        if ok {
+            detail = "\(n) páginas de origem → \(outCount) páginas de saída, cada uma com a própria página, na ordem"
+        } else if !badOut.isEmpty {
+            detail = "\(badOut.count) páginas de saída fora da regra 1 → 1 (origem misturada, repetida ou fora de ordem)"
+        } else {
+            detail = "\(n) páginas de origem, \(plan.pages.count) no plano e \(outCount) na saída"
+        }
+        return InvariantResult(id: "9", title: title, status: ok ? .passed : .failed, detail: detail, metrics: metrics,
+                               sourcePages: badSrc.sorted(), outputPages: badOut)
+    }
+
     // MARK: - Navegação (inv. 5)
 
     struct NavTarget {
@@ -721,10 +781,10 @@ public struct Validator: Sendable {
                 problems.append("\(what): ponto \(Describe.point(op)) fora da saída p. \(o.page + 1)")
                 return
             }
-            // Origem: espaço do usuário; saída: deslocada pela origem da janela gravada (S2).
+            // Origem: espaço do usuário; saída: a origem da janela gravada vai para a origem
+            // da caixa de saída ((0,0) quando o PDFKit grava, S2; a própria janela pelo qpdf).
             if let p = placements.first(where: { $0.sourcePage == s.page }), let sPage = src.page(at: s.page) {
-                let g = BoxGeometry.of(sPage)
-                let shift = g.toUser(p.sourceRect).origin
+                let shift = Self.boxShift(p, source: sPage, output: page)
                 let expected = CGPoint(x: sp.x - shift.x, y: sp.y - shift.y)
                 if abs(expected.x - op.x) > tol || abs(expected.y - op.y) > tol {
                     badOut.insert(o.page)
@@ -758,7 +818,7 @@ public struct Validator: Sendable {
                 let ou = o.url ?? (o.action as? PDFActionURL)?.url
                 if su != ou { badOut.insert(j); problems.append("saída p. \(j + 1) link \(k + 1): URL mudou") }
                 // Área clicável no mesmo lugar do conteúdo (o PDFKit a translada junto, S2).
-                let shift = BoxGeometry.of(sPage).toUser(p.sourceRect).origin
+                let shift = Self.boxShift(p, source: sPage, output: oPage)
                 let want = s.bounds.offsetBy(dx: -shift.x, dy: -shift.y), got = o.bounds
                 if abs(want.minX - got.minX) > tol || abs(want.minY - got.minY) > tol
                     || abs(want.width - got.width) > tol || abs(want.height - got.height) > tol {
@@ -780,6 +840,15 @@ public struct Validator: Sendable {
                                detail: ok ? "sumário, links e anotações preservados, destinos nas páginas certas"
                                           : problems.prefix(8).joined(separator: "; "),
                                metrics: metrics, outputPages: badOut.sorted())
+    }
+}
+
+extension Validator {
+    /// Deslocamento origem → saída do BoxWriter: origem da janela menos a da caixa gravada.
+    static func boxShift(_ p: Placement, source: PDFPage, output: PDFPage) -> CGPoint {
+        let w = BoxGeometry.of(source).toUser(p.sourceRect).standardized.origin
+        let o = output.bounds(for: .cropBox).origin
+        return CGPoint(x: w.x - o.x, y: w.y - o.y)
     }
 }
 
@@ -837,6 +906,27 @@ enum Ink {
             }
         }
         return Int(total.rounded())
+    }
+
+    /// Primeira/última linha e coluna com ≥ `k` pixels (inclusivo-exclusivo), a regra da
+    /// caixa de tinta da análise em scan.
+    static func boxWithAtLeast(_ m: InkMask, k: CGFloat) -> (x0: Int, y0: Int, x1: Int, y1: Int)? {
+        var rows = [Float](repeating: 0, count: m.height), cols = [Float](repeating: 0, count: m.width)
+        m.values.withUnsafeBufferPointer { b in
+            cols.withUnsafeMutableBufferPointer { c in
+                for y in 0..<m.height {
+                    let row = b.baseAddress! + y * m.width
+                    var s: Float = 0
+                    vDSP_sve(row, 1, &s, vDSP_Length(m.width))
+                    rows[y] = s
+                    vDSP_vadd(c.baseAddress!, 1, row, 1, c.baseAddress!, 1, vDSP_Length(m.width))
+                }
+            }
+        }
+        let t = Float(k)
+        guard let y0 = rows.firstIndex(where: { $0 >= t }), let y1 = rows.lastIndex(where: { $0 >= t }),
+              let x0 = cols.firstIndex(where: { $0 >= t }), let x1 = cols.lastIndex(where: { $0 >= t }) else { return nil }
+        return (x0, y0, x1 + 1, y1 + 1)
     }
 
     /// Pixels em que as duas máscaras (mesmas dimensões) divergem.

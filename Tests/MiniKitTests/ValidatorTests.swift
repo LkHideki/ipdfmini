@@ -209,6 +209,43 @@ import Testing
         #expect(v.result("6")?.metric("orçamento") == 1.3)
     }
 
+    /// INC-22: plano de fatias (E4) validado como se a divisão não tivesse sido permitida.
+    @Test func slicedPlanWithoutSplittingFails9() async throws {
+        let s = Scenario.reportWithFigures
+        let src = try TestFiles.source(s)
+        let analysis = try await ConversionCache.shared.analysis(s)
+        let plan = try Converter().plan(analysis: analysis, options: ConversionOptions(mode: .portraitSlices)).plan
+        #expect(plan.pages.count > analysis.pages.count, "o cenário precisa dividir páginas")
+        let out = TestFiles.url("\(s.rawValue).inv9.pdf")
+        _ = try await PlacementWriter().write(plan, source: SourceDocument(url: src), to: out, options: WriteOptions())
+        let strict = try await Validator().validate(analysis: analysis, plan: plan, source: SourceDocument(url: src),
+                                                    output: out, allowSplitting: false)
+        let r = try #require(strict.result("9"))
+        #expect(r.status == .failed)
+        #expect(!strict.passed)
+        #expect(!r.outputPages.isEmpty && !r.sourcePages.isEmpty)
+        #expect(r.metric("páginas de saída") == Double(plan.pages.count))
+        // O mesmo arquivo com a divisão permitida (ou deduzida da estratégia E4): n/a.
+        for allow in [true, nil] as [Bool?] {
+            let v = try await Validator().validate(analysis: analysis, plan: plan, source: SourceDocument(url: src),
+                                                   output: out, allowSplitting: allow)
+            #expect(v.result("9")?.status == .notApplicable)
+        }
+    }
+
+    /// Plano declarado com uma página repetida no lugar da seguinte: mesma contagem, origem
+    /// errada. (O BoxWriter não grava página repetida; grava-se o plano certo e valida-se o declarado.)
+    @Test func repeatedSourcePageFails9() async throws {
+        let analysis = try await ConversionCache.shared.analysis(.book6x9)
+        let base = try Converter().plan(analysis: analysis, options: ConversionOptions(mode: .crop)).plan
+        var claimed = base
+        claimed.pages[3] = claimed.pages[2]
+        let v = try await validate(.book6x9, name: "inv9dup", claimed: claimed) { $0 }
+        #expect(v.result("9")?.status == .failed)
+        #expect(v.result("9")?.outputPages == [3])
+        #expect(v.result("9")?.metric("páginas de origem") == Double(analysis.pages.count))
+    }
+
     @Test func notApplicableInvariantsCarryReason() async throws {
         let c = try await ConversionCache.shared.converted(.book6x9, mode: .crop)
         for id in ["4", "7"] {

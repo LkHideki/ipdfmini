@@ -13,6 +13,15 @@ struct InspectorView: View {
         Binding(get: { item.settings }, set: { library.update(item, $0) })
     }
 
+    /// Desligar a divisão também tira um modo de fatias que tenha ficado escolhido.
+    private var allowSplitting: Binding<Bool> {
+        Binding(get: { item.settings.allowSplitting }, set: { on in
+            var s = item.settings
+            s.setAllowSplitting(on)
+            library.update(item, s)
+        })
+    }
+
     var body: some View {
         Form {
             scopeSection
@@ -72,8 +81,15 @@ struct InspectorView: View {
 
     private var strategySection: some View {
         Section {
+            VStack(alignment: .leading, spacing: 2) {
+                Toggle(Labels.allowSplittingTitle, isOn: allowSplitting)
+                Text(Labels.allowSplittingFooter)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             Picker("Modo", selection: settings.mode) {
-                ForEach(Labels.modes, id: \.self) { m in
+                ForEach(Labels.modes(allowSplitting: item.settings.allowSplitting), id: \.self) { m in
                     Text(Labels.mode(m)).tag(m)
                 }
             }
@@ -113,7 +129,7 @@ struct InspectorView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(Labels.mode(forcing: c.strategy) == nil)
+        .disabled(item.settings.forcing(c) == nil)
         .accessibilityLabel("\(Labels.candidate(c)), \(Labels.tier(c.tier))\(chosen ? ", escolhido" : "")")
     }
 
@@ -324,7 +340,7 @@ struct HelpView: View {
                 helpItem("AirDrop", "Exportar e enviar por AirDrop (⇧⌘E) exporta o documento e abre o AirDrop. O resumo do lote envia todos os PDFs convertidos de uma vez. Compartilhar, na barra, oferece os demais serviços do macOS.")
                 helpItem("Origem e Mini", "Origem (⌘1) mostra a página original com a janela de recorte em laranja e as áreas removidas hachuradas. Mini (⌘2) mostra a página exportada dentro da moldura do iPad mini 7. Use as setas ← → (ou ⌘← ⌘→) para virar as páginas.")
                 helpItem("Tamanho real", "Com “Tamanho real” (⌘0) a tela do iPad mini é desenhada com 115,94 × 176,55 mm, a partir das dimensões físicas que o monitor informa. Segure o iPad ao lado para comparar.")
-                helpItem("Ajustes", "No inspetor: perfil do leitor, modo (Automático, Recorte, Recorte sem cabeçalho/rodapé, Passagem direta), respiro em mm e classes de escala. A tabela de candidatos mostra o corpo do texto em pt equivalente e quantas telas cada página de origem ocupa.")
+                helpItem("Ajustes", "No inspetor: perfil do leitor, modo (Automático, Recorte, Recorte sem cabeçalho/rodapé, Passagem direta), respiro em mm e classes de escala. Por padrão cada página do original vira exatamente uma tela; “Permitir dividir páginas” libera Paisagem, Fatias em retrato e Colunas, que podem espalhar uma página por várias telas. A tabela de candidatos mostra o corpo do texto em pt equivalente e quantas telas cada página de origem ocupa.")
                 helpItem("Exportar", "Exportar… (⌘E) grava “{título} — mini.pdf” e valida a saída: nenhuma tinta cortada, proporção do viewport, legibilidade, navegação e cantos. O inspetor mostra quantos itens do sumário a origem tem e quantos chegaram à saída apontando para a página certa.")
                 helpItem("Calibração", "Arquivo › Gerar PDF de calibração… cria uma página com réguas nas bordas. Abra no leitor do iPad mini e anote a primeira marca visível em cada borda para medir a área útil real.")
             }

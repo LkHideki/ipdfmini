@@ -152,11 +152,62 @@ import Testing
                   ConversionSettings(profileID: "books.landscape.fullscreen", mode: .crop, marginMM: 3.5, classMode: .all),
                   ConversionSettings(profileID: "safearea.portrait", mode: .aggressiveCrop, marginMM: 0, classMode: .bySize),
                   ConversionSettings(mode: .passthrough, marginMM: 10),
-                  ConversionSettings(mode: .landscapeSlices), ConversionSettings(mode: .portraitSlices, marginMM: 1),
-                  ConversionSettings(profileID: "fullscreen.landscape", mode: .columns, classMode: .all)] {
+                  ConversionSettings(mode: .landscapeSlices, allowSplitting: true),
+                  ConversionSettings(mode: .portraitSlices, marginMM: 1, allowSplitting: true),
+                  ConversionSettings(profileID: "fullscreen.landscape", mode: .columns, classMode: .all, allowSplitting: true),
+                  ConversionSettings(allowSplitting: true),
+                  // Modo de fatias sem a divisão: vai como automático (o interruptor manda).
+                  ConversionSettings(mode: .columns)] {
             let c = try #require(try IPDFMini.parseAsRoot(["plan", "x.pdf"] + s.cliArguments) as? ipdfmini_cli.Plan)
             #expect(try c.conversion.options() == s.options, "\(s)")
+            #expect(try c.conversion.options().splittingAllowed == s.allowSplitting, "\(s)")
         }
+    }
+
+    /// INC-22: interruptor desligado por padrão; nenhum caminho do app divide páginas sem ele.
+    @Test func splittingToggleGatesEveryPath() async throws {
+        let off = ConversionSettings(mode: .columns)
+        #expect(!ConversionSettings().allowSplitting)
+        #expect(off.effectiveMode == .auto && off.options.mode == .auto && !off.options.splittingAllowed)
+        #expect(!off.cliArguments.contains("--allow-split") && off.cliArguments.contains("auto"))
+        var s = ConversionSettings(mode: .portraitSlices, allowSplitting: true)
+        #expect(s.effectiveMode == .portraitSlices && s.cliArguments.contains("--allow-split"))
+        s.setAllowSplitting(false)
+        #expect(s.mode == .auto && !s.allowSplitting)
+        s.setAllowSplitting(true)
+        #expect(s.mode == .auto && s.allowSplitting)
+
+        // Seletor de modo: Paisagem, Fatias em retrato e Colunas só com o interruptor.
+        #expect(Labels.modes(allowSplitting: false) == [.auto, .crop, .aggressiveCrop, .passthrough])
+        #expect(Set(Labels.modes(allowSplitting: true)) == Set(ConversionMode.allCases))
+
+        // Replanejamento em processo (pré-visualização, clique em candidato) e processo filho
+        // (exportação, lote) partem destes ajustes: 1 → 1 sem o interruptor.
+        let pdf = try await CorpusFiles.shared.pdf("arxivTwoColumn")
+        let analysis = try await Converter().analyze(input: pdf)
+        let r = try Replanner.replan(analysis, ConversionSettings()).result
+        #expect(r.plan.pages.count == analysis.pages.count)
+        #expect(!r.candidates.contains { StrategyID.splitsPages($0.strategy) })
+        for c in r.candidates {
+            let forced = try #require(ConversionSettings().forcing(c))
+            #expect(try Replanner.replan(analysis, forced).result.plan.pages.count == analysis.pages.count, "\(c.strategy)")
+        }
+        let split = try Replanner.replan(analysis, ConversionSettings(allowSplitting: true)).result
+        #expect(split.plan.pages.count > analysis.pages.count)
+        let client = try Helper.client()
+        let out = Scratch.url("split-off — mini.pdf")
+        let report = try await client.convert(input: pdf, output: out, settings: ConversionSettings(mode: .columns))
+        #expect(!report.allowSplitting && report.write.outputPageCount == analysis.pages.count)
+        #expect(report.validation?.result("9")?.status == .passed)
+        #expect(try #require(PDFDocument(url: out)).pageCount == analysis.pages.count)
+    }
+
+    @Test func settingsWithoutAllowSplittingDecodeAsOff() throws {
+        let json = #"{"profileID":"books.portrait.fullscreen","mode":"columns","marginMM":2,"classMode":"oddEven"}"#
+        let s = try JSONDecoder().decode(ConversionSettings.self, from: Data(json.utf8))
+        #expect(!s.allowSplitting && s.effectiveMode == .auto)
+        let on = ConversionSettings(allowSplitting: true)
+        #expect(try JSONDecoder().decode(ConversionSettings.self, from: JSONEncoder().encode(on)) == on)
     }
 }
 
@@ -254,7 +305,11 @@ import Testing
                                                                       fidelityCost: s.fidelityCost)),
                              legibility: .standard)
         }
-        let base = ConversionSettings()
+        // Fatias e colunas só com a divisão permitida (INC-22); sem ela o clique não faz nada.
+        #expect(ConversionSettings().forcing(summary(.landscapeSlices, .booksPortrait.rotated)) == nil)
+        #expect(ConversionSettings().forcing(summary(.columns, .booksPortrait)) == nil)
+        #expect(ConversionSettings().forcing(summary(.crop, .booksPortrait))?.mode == .crop)
+        let base = ConversionSettings(allowSplitting: true)
         let e3 = try #require(base.forcing(summary(.landscapeSlices, .booksPortrait.rotated)))
         #expect(e3.mode == .landscapeSlices && e3.profileID == "books.landscape.fullscreen")
         let e5 = try #require(base.forcing(summary(.columns, .booksPortrait)))

@@ -168,6 +168,8 @@ final class Library {
     @ObservationIgnored let client: HelperClient?
     /// Duas análises por vez: uma pasta com centenas de PDFs não abre centenas de processos.
     @ObservationIgnored let analysisLimiter = ConcurrencyLimiter(limit: 2)
+    /// Análise em andamento ou na fila, por documento: sair da lista cancela (mata o filho).
+    @ObservationIgnored private var analysisTasks: [String: Task<Void, Never>] = [:]
     static let batchConcurrency = 2
 
     init(client: HelperClient? = HelperClient.locate().map { HelperClient(executable: $0) }) {
@@ -208,7 +210,8 @@ final class Library {
         guard let client else { item.fail(HelperError.notFound.message); return }
         item.status = .waiting
         let url = item.url, settings = item.settings, limiter = analysisLimiter
-        Task {
+        analysisTasks[item.id]?.cancel()
+        analysisTasks[item.id] = Task {
             do {
                 let report = try await limiter.withPermit { () async throws -> FullPlanReport in
                     // Removido da fila enquanto esperava a vaga: não gasta processo.
@@ -220,11 +223,15 @@ final class Library {
                     guard alive else { throw CancellationError() }
                     return try await client.plan(input: url, settings: settings)
                 }
+                // Saiu da lista durante a análise: o resultado não vale mais nada.
+                guard self.docs[item.id] === item, !Task.isCancelled else { return }
                 item.load(report, analyzedWith: settings)
             } catch is CancellationError {
             } catch let e as HelperError {
+                guard self.docs[item.id] === item, !Task.isCancelled else { return }
                 item.fail(e.message)
             } catch {
+                guard self.docs[item.id] === item, !Task.isCancelled else { return }
                 item.fail(String(describing: error))
             }
         }
@@ -245,13 +252,36 @@ final class Library {
         }
     }
 
+    /// Lote em execução com algum documento da pasta: o botão de remover fica desabilitado
+    /// até o lote acabar (tirar o documento no meio deixaria o resumo apontando para o nada).
+    func folderInRunningBatch(_ group: QueueGroup) -> Bool {
+        guard let b = batch, b.phase == .running else { return false }
+        let ids = Set(group.entries.map(\.id))
+        return b.jobs.contains { ids.contains($0.id) }
+    }
+
+    /// Deslista a pasta (e as subpastas que vieram com ela). Nada muda no disco.
+    func removeFolder(_ group: QueueGroup) {
+        guard !folderInRunningBatch(group) else { return }
+        let before = queue.entries.map(\.id)
+        let gone = queue.removeGroup(root: group.root)
+        let next = BatchQueue.selection(after: Set(gone), current: selectionID, before: before)
+        forget(gone)
+        selectionID = next
+        notice = QueueNotice.folderRemoved(group.title, count: gone.count)
+    }
+
     func remove(_ item: DocumentItem) {
         queue.remove(item.id)
         forget([item.id])
     }
 
     private func forget(_ ids: [String]) {
-        for id in ids { docs[id] = nil }
+        for id in ids {
+            docs[id] = nil
+            // Cancelar a tarefa mata o processo filho (HelperProcess) e libera a vaga.
+            analysisTasks.removeValue(forKey: id)?.cancel()
+        }
         store.forget(ids)
         if let s = selectionID, docs[s] == nil { selectionID = queue.entries.last?.id }
     }

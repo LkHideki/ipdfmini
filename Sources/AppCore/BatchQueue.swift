@@ -99,6 +99,25 @@ public struct BatchQueue: Sendable, Equatable {
     }
 
     public mutating func remove(_ id: String) { entries.removeAll { $0.id == id } }
+
+    /// Tira da lista a seção da pasta (com as subpastas que vieram com ela); devolve as
+    /// chaves removidas, na ordem da fila. Só a lista muda: nada é apagado nem movido no
+    /// disco, e arrastar a pasta de novo a traz de volta.
+    @discardableResult
+    public mutating func removeGroup(root: URL) -> [String] {
+        let gone = entries.filter { $0.found.root.path == root.path }.map(\.id)
+        entries.removeAll { $0.found.root.path == root.path }
+        return gone
+    }
+
+    /// Seleção depois de `removed` sair: a atual se ficou; senão o próximo da fila depois
+    /// dela, ou o anterior; `nil` (tela vazia) se não sobrou nada. `before` = ordem antiga.
+    public static func selection(after removed: Set<String>, current: String?, before: [String]) -> String? {
+        guard let current else { return nil }
+        guard removed.contains(current) else { return current }
+        guard let i = before.firstIndex(of: current) else { return before.first { !removed.contains($0) } }
+        return before[(i + 1)...].first { !removed.contains($0) } ?? before[..<i].last { !removed.contains($0) }
+    }
 }
 
 /// Ajustes por documento sobre um padrão do lote (§12.4, "receitas reaplicáveis").
@@ -134,6 +153,11 @@ public struct SettingsStore: Sendable, Equatable {
 
 /// Aviso depois de somar arquivos/pastas à fila.
 public enum QueueNotice {
+    /// Banner depois de deslistar uma pasta.
+    public static func folderRemoved(_ title: String, count: Int) -> String {
+        "Pasta \(title) removida da lista (\(count == 1 ? "1 PDF" : "\(count) PDFs")) — os arquivos continuam no disco"
+    }
+
     public static func text(added: Int, duplicates: Int, rejected: Int, folders: Int) -> String {
         var parts: [String] = []
         if added == 0 {

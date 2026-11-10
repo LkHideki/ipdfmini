@@ -100,8 +100,9 @@ enum M3Check {
         return (ok, truth.lines.count, broken)
     }
 
+    /// Aceite do M3 é de fatias: divisão de páginas permitida (forçar E3–E5 já a implica).
     static func measure(_ s: Scenario, mode: ConversionMode = .auto) async throws -> (M3Measure, Converted) {
-        let c = try await ConversionCache.shared.converted(s, mode: mode)
+        let c = try await ConversionCache.shared.converted(s, mode: mode, split: true)
         let analysis = try await ConversionCache.shared.analysis(s)
         let truth = c.truth
         let plan = c.report.plan

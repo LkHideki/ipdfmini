@@ -37,6 +37,14 @@ enum HeaderFooter {
         }
         let n = pages.count
         var marked = Set<[Int]>()
+        // Linha corrida com fólio numa ponta ("10 | Chapter 1: Introduction", "Preface | xxix",
+        // padrão O'Reilly): o título muda a cada capítulo, então a repetição do texto não a
+        // pega; o que se repete é o formato e a posição.
+        let folios = cands.filter { isOutermost($0, in: pages[$0.page]) && isFolioLine(pages[$0.page].lineTexts[$0.line]) }
+        for c in folios {
+            let pagesAtSpot = Set(folios.filter { $0.top == c.top && abs($0.distance - c.distance) <= positionTolerance }.map(\.page))
+            if pagesAtSpot.count >= min(2, n) { marked.insert([c.page, c.line]) }
+        }
         let groups = Dictionary(grouping: cands) { "\($0.top)|\($0.key)" }
         for c in cands {
             // páginas (distintas) com o mesmo texto na mesma faixa
@@ -82,7 +90,17 @@ enum HeaderFooter {
             let flags = b.lines.map { l in marked.contains { hits(l.rect, $0) } }
             guard flags.contains(true) else { out.append(b); continue }
             if !flags.contains(false) {
-                out.append(Block(rect: b.rect, type: .headerFooter, lines: b.lines, column: nil))
+                // Bloco muito mais alto que as linhas marcadas (página de índice cujo bloco
+                // da página inteira tem uma "linha" só, que cruza o fólio): não é rodapé.
+                // Pela altura somada (não pela união): um "M" de índice no topo, que passa por
+                // número romano, e o fólio no pé não fazem do bloco inteiro um rodapé.
+                let hits = marked.filter { m in b.lines.contains { hits($0.rect, m) } }
+                let slack = max(4, hits.map(\.height).max() ?? 0)
+                if b.rect.height <= hits.reduce(0) { $0 + $1.height } + 2 * slack {
+                    out.append(Block(rect: b.rect, type: .headerFooter, lines: b.lines, column: nil))
+                } else {
+                    out.append(b)
+                }
                 continue
             }
             let head = flags.prefix { $0 }.count, tail = flags.reversed().prefix { $0 }.count
@@ -105,6 +123,24 @@ enum HeaderFooter {
         let feet = out.filter { $0.type == .headerFooter && $0.rect.maxY <= bottom && $0.rect.minY < top }
         let middle = out.filter { b in !heads.contains(b) && !feet.contains(b) }
         return heads + middle + feet
+    }
+
+    /// Fólio (arábico ou romano) separado do título por barra ou ponto, no início ou no fim.
+    static func isFolioLine(_ text: String) -> Bool {
+        let t = text.trimmingCharacters(in: .whitespaces)
+        guard t.count <= 120 else { return false }
+        let folio = #"(\d{1,4}|[ivxlcdm]{1,7})"#, sep = #"\s*[|│•·]\s*"#
+        return t.range(of: "^(?i)\(folio)\(sep)\\S", options: .regularExpression) != nil
+            || t.range(of: "(?i)\\S\(sep)\(folio)$", options: .regularExpression) != nil
+    }
+
+    /// Nenhuma outra linha da página mais perto da borda: a primeira (topo) ou a última (base).
+    static func isOutermost(_ c: Candidate, in p: PageWork) -> Bool {
+        let lines = p.analysis.lines
+        let r = lines[c.line].rect
+        return !lines.indices.contains { i in
+            i != c.line && (c.top ? lines[i].rect.midY > r.maxY : lines[i].rect.midY < r.minY)
+        }
     }
 
     /// Texto módulo dígitos: "Página 12" e "Página 13" viram a mesma chave.

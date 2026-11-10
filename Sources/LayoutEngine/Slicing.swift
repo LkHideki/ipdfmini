@@ -19,6 +19,8 @@ struct SliceUnit: Sendable, Equatable {
 
     var rect: CGRect
     var kind: Kind
+    /// De bloco `.headerFooter` (cabeçalho, rodapé, fólio): nunca fica sozinho numa fatia.
+    var furniture = false
 
     var textLines: Int {
         switch kind {
@@ -38,14 +40,16 @@ enum SliceUnits {
     /// Unidades de um bloco. Bloco de texto cujas linhas não cobrem o retângulo
     /// (contrato violado) vira atômico: melhor não cortar do que perder tinta.
     static func units(of block: Block, index: Int) -> [SliceUnit] {
-        if block.isAtomic || block.lines.isEmpty { return [SliceUnit(rect: block.rect, kind: .atomic)] }
+        let furniture = block.type == .headerFooter
+        if block.isAtomic || block.lines.isEmpty { return [SliceUnit(rect: block.rect, kind: .atomic, furniture: furniture)] }
         let hull = block.lines.dropFirst().reduce(block.lines[0].rect) { $0.union($1.rect) }
         guard hull.insetBy(dx: -eps, dy: -eps).contains(block.rect) else {
-            return [SliceUnit(rect: block.rect.union(hull), kind: .atomic)]
+            return [SliceUnit(rect: block.rect.union(hull), kind: .atomic, furniture: furniture)]
         }
         let heading = block.type == .heading
         return block.lines.enumerated().map { k, l in
-            SliceUnit(rect: l.rect, kind: .line(block: index, line: k, count: block.lines.count, heading: heading))
+            SliceUnit(rect: l.rect, kind: .line(block: index, line: k, count: block.lines.count, heading: heading),
+                      furniture: furniture)
         }
     }
 
@@ -124,6 +128,25 @@ enum SliceUnits {
             }
         }
         return out
+    }
+}
+
+extension SliceUnits {
+    /// Cabeçalho/rodapé corrido nunca abre nem fecha uma fatia sozinho: o grupo inicial
+    /// só de cabeçalho cola no seguinte e o final só de rodapé no anterior. Sem isto o DP
+    /// mandava o rodapé para uma tela própria sempre que o corpo enchia as anteriores
+    /// (INC-22). União mais alta que a tela segue o caminho de unidade alta (reduzida):
+    /// encolher um pouco o vizinho custa menos que uma tela só com o fólio.
+    static func glueFurniture(_ groups: [Range<Int>], _ units: [SliceUnit]) -> [Range<Int>] {
+        var g = groups
+        func onlyFurniture(_ r: Range<Int>) -> Bool { units[r].allSatisfy(\.furniture) }
+        if g.count >= 2, onlyFurniture(g[0]), !onlyFurniture(g[1]) {
+            g.replaceSubrange(0...1, with: [g[0].lowerBound..<g[1].upperBound])
+        }
+        if g.count >= 2, onlyFurniture(g[g.count - 1]), !onlyFurniture(g[g.count - 2]) {
+            g.replaceSubrange((g.count - 2)..., with: [g[g.count - 2].lowerBound..<g[g.count - 1].upperBound])
+        }
+        return g
     }
 }
 

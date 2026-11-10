@@ -25,6 +25,9 @@ public enum ConversionMode: String, Codable, Sendable, CaseIterable {
     /// Força E5 (colunas).
     case columns
 
+    /// Modos que forçam uma estratégia de fatias ou colunas (uma página vira várias telas).
+    public var splitsPages: Bool { forcedStrategy.map(StrategyID.splitsPages) ?? false }
+
     var forcedStrategy: StrategyID? {
         switch self {
         case .auto: nil
@@ -39,6 +42,11 @@ public enum ConversionMode: String, Codable, Sendable, CaseIterable {
 }
 
 /// Escritor que grava cada estratégia. PLAN.md §9.1.
+public extension StrategyID {
+    /// E3 em diante distribui uma página de origem por várias telas; E0–E2 mantêm a página inteira.
+    static func splitsPages(_ s: StrategyID) -> Bool { s.fidelityCost > StrategyID.aggressiveCrop.fidelityCost }
+}
+
 public enum WriterKind: String, Codable, Sendable {
     /// `BoxWriter` (PDFKit, caixas em lugar): E0–E2.
     case box
@@ -60,20 +68,27 @@ public struct ConversionOptions: Sendable, Equatable {
     /// Permite ao modo auto remover cabeçalho, rodapé e número de página (E2).
     /// Desligado por padrão: confundir nota de rodapé com rodapé apaga conteúdo (§18, R5).
     public var removeHeaderFooter: Bool
+    /// Deixa E3, E4 e E5 entrarem na disputa (e na tabela de candidatos). Desligado por
+    /// padrão: dividir a página manda parte dela para outra tela, e a regra é 1 → 1.
+    public var allowSplitting: Bool
     public var writeOptions: WriteOptions
     public var validate: Bool
 
     public init(profile: ViewportProfile = .booksPortrait, mode: ConversionMode = .auto, recipe: Recipe = Recipe(),
-                password: String? = nil, removeHeaderFooter: Bool = false, writeOptions: WriteOptions = WriteOptions(),
-                validate: Bool = true) {
+                password: String? = nil, removeHeaderFooter: Bool = false, allowSplitting: Bool = false,
+                writeOptions: WriteOptions = WriteOptions(), validate: Bool = true) {
         self.profile = profile
         self.mode = mode
         self.recipe = recipe
         self.password = password
         self.removeHeaderFooter = removeHeaderFooter
+        self.allowSplitting = allowSplitting
         self.writeOptions = writeOptions
         self.validate = validate
     }
+
+    /// Divisão efetiva: forçar fatias ou colunas é pedir a divisão explicitamente.
+    public var splittingAllowed: Bool { allowSplitting || mode.splitsPages }
 }
 
 public enum ConversionError: Error, Equatable, Sendable, CustomStringConvertible {
@@ -98,11 +113,12 @@ public struct Converter: Sendable {
         self.validator = validator
     }
 
-    /// E0 e E1 sempre; E2 só com a remoção pedida (opção ou modo forçado); E3, E4 e E5 sempre.
+    /// E0 e E1 sempre; E2 só com a remoção pedida (opção ou modo forçado); E3, E4 e E5
+    /// só com a divisão permitida (fora dela nem viram candidatos).
     static func strategies(_ o: ConversionOptions) -> [any AdaptationStrategy] {
         var s: [any AdaptationStrategy] = [PassthroughStrategy(), CropStrategy()]
         if o.removeHeaderFooter || o.mode == .aggressiveCrop { s.append(AggressiveCropStrategy()) }
-        s += [LandscapeSlicesStrategy(), PortraitSlicesStrategy(), ColumnsStrategy()]
+        if o.splittingAllowed { s += [LandscapeSlicesStrategy(), PortraitSlicesStrategy(), ColumnsStrategy()] }
         return s
     }
 
@@ -170,7 +186,8 @@ public struct Converter: Sendable {
         let plan = strategy.plan(doc, chosen.profile, recipe)
         let legibility = options.recipe.legibility
         let candidates = ranked.map { CandidateSummary($0, legibility: legibility) }
-        return PlanResult(analysis: doc, candidates: candidates, chosenIndex: chosenIndex, mode: options.mode, plan: plan)
+        return PlanResult(analysis: doc, candidates: candidates, chosenIndex: chosenIndex, mode: options.mode, plan: plan,
+                          allowSplitting: options.splittingAllowed)
     }
 
     public func convert(input: URL, output: URL, options: ConversionOptions) async throws -> ConversionReport {
@@ -183,12 +200,13 @@ public struct Converter: Sendable {
         }
         let validation: ValidationReport? = options.validate
             ? try await validator.validate(analysis: planned.analysis, plan: planned.plan, source: source, output: output,
-                                           writer: writer)
+                                           writer: writer, allowSplitting: options.splittingAllowed)
             : nil
         // Contagem para a interface; falhar aqui não invalida a conversão (o inv. 5 já julga).
         let navigation = try? NavigationSummary.measure(plan: planned.plan, source: source, output: output)
         return ConversionReport(input: input.path, output: output.path, analysis: AnalysisSummary(planned.analysis),
                                 candidates: planned.candidates, chosenIndex: planned.chosenIndex, mode: options.mode,
-                                plan: planned.plan, write: write, validation: validation, navigation: navigation)
+                                plan: planned.plan, write: write, validation: validation, navigation: navigation,
+                                allowSplitting: options.splittingAllowed)
     }
 }
