@@ -1,9 +1,11 @@
-// Spikes do M0 (PLAN.md §17): S1 Quartz, S2 PDFKit com caixas, S3 altura-x.
-// Uso: ipdfmini-spikes <s1|s2|s3|all> <arquivo-de-saída.md>
+// Spikes do M0 (PLAN.md §17): S1 Quartz, S2 PDFKit com caixas, S3 altura-x, S6 OCR, S7 WebKit.
+// Uso: ipdfmini-spikes <s1|s2|s3|all|s6|s7> <arquivo-de-saída.md>
 // Os PDFs gerados ficam no mesmo diretório do markdown.
 import Foundation
 import MiniGeometry
 
+// S6 (OCR) e S7 (WebKit) ficam fora do `all`: rodam isolados (S6 leva ~3 min).
+if CommandLine.arguments.count >= 3, CommandLine.arguments[1] == "s6" { try S6.execute(outPath: CommandLine.arguments[2]); exit(0) }
 if CommandLine.arguments.count >= 3, CommandLine.arguments[1] == "s7" { S7.main(out: URL(fileURLWithPath: CommandLine.arguments[2])) }
 
 let args = CommandLine.arguments
