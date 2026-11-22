@@ -52,7 +52,7 @@ enum Assembler {
             })
         }
 
-        let pages = zip(plan.pages, canvases).map { truth(spec: $0, canvas: $1) }
+        let pages = zip(plan.pages, canvases).map { Self.truth(spec: $0, canvas: $1) }
         let truth = DocumentTruth(
             pages: pages,
             bodyPointSize: CTFontGetSize(plan.bodyFont),
