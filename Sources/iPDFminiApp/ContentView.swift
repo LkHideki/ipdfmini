@@ -123,13 +123,20 @@ struct ContentView: View {
             }
         }
         ToolbarItem(placement: .primaryAction) {
+            let n = library.sendTargets.count
             Button {
-                library.airDrop(library.shareCandidates)
+                library.sendToIPad()
             } label: {
-                Label("AirDrop", systemImage: "dot.radiowaves.left.and.right")
+                if library.sendingToIPad {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Label("Enviar para o iPad", systemImage: "dot.radiowaves.left.and.right")
+                }
             }
-            .disabled(library.shareCandidates.isEmpty)
-            .help("Enviar por AirDrop a última exportação ou o último lote")
+            .disabled(!library.canSendToIPad)
+            .help(n == 0 ? "Abra um PDF para enviar ao iPad por AirDrop"
+                  : n == 1 ? "Converter e enviar por AirDrop (⌥⌘E)"
+                  : "Converter e enviar os \(n) marcados por AirDrop (⌥⌘E)")
         }
         ToolbarItem(placement: .primaryAction) {
             Button {

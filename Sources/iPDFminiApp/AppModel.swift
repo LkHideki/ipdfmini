@@ -32,6 +32,8 @@ final class DocumentItem: Identifiable {
     var currentPage = 0
     var lastExport: ConversionReport?
     var lastExportURL: URL?
+    /// Ajustes usados em `lastExportURL`: se mudaram, o envio para o iPad converte de novo.
+    var lastExportSettings: ConversionSettings?
     var exportError: String?
     /// Muda a cada plano aplicado; invalida as imagens em cache.
     private(set) var planVersion = 0
@@ -168,12 +170,18 @@ final class Library {
     @ObservationIgnored let client: HelperClient?
     /// Duas análises por vez: uma pasta com centenas de PDFs não abre centenas de processos.
     @ObservationIgnored let analysisLimiter = ConcurrencyLimiter(limit: 2)
+    @ObservationIgnored let staging = AirDropStaging.default
+    /// Conversão para o AirDrop em andamento (desabilita o botão).
+    private(set) var sendingToIPad = false
     /// Análise em andamento ou na fila, por documento: sair da lista cancela (mata o filho).
     @ObservationIgnored private var analysisTasks: [String: Task<Void, Never>] = [:]
     static let batchConcurrency = 2
 
     init(client: HelperClient? = HelperClient.locate().map { HelperClient(executable: $0) }) {
         self.client = client
+        // Sobras de envios de sessões anteriores (o AirDrop já terminou há muito).
+        let staging = self.staging
+        Task.detached(priority: .background) { staging.prune() }
     }
 
     var items: [DocumentItem] { queue.entries.compactMap { docs[$0.id] } }
@@ -345,6 +353,7 @@ final class Library {
                 let report = try await client.convert(input: url, output: out, settings: settings)
                 item.lastExport = report
                 item.lastExportURL = out
+                item.lastExportSettings = settings
                 notice = report.passed ? "Exportado: \(out.lastPathComponent) · validação aprovada"
                                        : "Exportado com falhas de validação: \(out.lastPathComponent)"
                 item.endConversion()
@@ -369,6 +378,79 @@ final class Library {
 
     func airDrop(_ urls: [URL]) {
         if let problem = Sharing.airDrop(ShareItems.urls(urls)) { Sharing.alert(problem) }
+    }
+
+    // MARK: - Enviar para o iPad (sem painel de salvar)
+
+    /// O que "Enviar para o iPad" manda: os marcados com plano pronto; sem marcados, o selecionado.
+    var sendTargets: [DocumentItem] {
+        let ready: (DocumentItem) -> Bool = { $0.planned != nil && $0.status != .converting }
+        let marked = queue.included.compactMap { docs[$0.id] }.filter(ready)
+        if !marked.isEmpty { return marked }
+        return selected.map { ready($0) ? [$0] : [] } ?? []
+    }
+
+    var canSendToIPad: Bool { !sendingToIPad && client != nil && !sendTargets.isEmpty }
+
+    /// Converte (ou reaproveita a exportação com os mesmos ajustes) para uma pasta temporária
+    /// e abre o AirDrop com todos os PDFs de uma vez. Nada é gravado ao lado da origem.
+    func sendToIPad() {
+        guard canSendToIPad, let client else { return }
+        let targets = sendTargets
+        let staging = self.staging
+        sendingToIPad = true
+        notice = targets.count == 1 ? "Preparando \(targets[0].displayName) para o AirDrop…"
+                                    : "Preparando \(targets.count) PDFs para o AirDrop…"
+        Task {
+            defer { sendingToIPad = false }
+            staging.prune()
+            let dir: URL
+            do { dir = try staging.makeBatchDirectory() } catch {
+                notice = nil
+                Sharing.alert("Não foi possível criar a pasta temporária: \(error.localizedDescription)")
+                return
+            }
+            let names = AirDropStaging.uniqueNames(targets.map {
+                ExportNaming.defaultFileName(title: $0.analysis?.title, sourceURL: $0.url)
+            })
+            let limiter = ConcurrencyLimiter(limit: Self.batchConcurrency)
+            var failures: [String] = []
+            let urls = await withTaskGroup(of: (Int, URL?).self) { group in
+                for (i, item) in targets.enumerated() {
+                    if let u = item.lastExportURL, item.lastExportSettings == item.settings,
+                       FileManager.default.fileExists(atPath: u.path) {
+                        group.addTask { (i, u) }
+                        continue
+                    }
+                    let input = item.url, settings = item.settings, out = dir.appendingPathComponent(names[i])
+                    item.beginConversion()
+                    group.addTask {
+                        let r: Result<ConversionReport, HelperError> = await limiter.withPermit {
+                            do { return .success(try await client.convert(input: input, output: out, settings: settings)) }
+                            catch let e as HelperError { return .failure(e) }
+                            catch { return .failure(.launchFailed(String(describing: error))) }
+                        }
+                        let converted = await MainActor.run { () -> Bool in
+                            defer { item.endConversion() }
+                            switch r {
+                            case .success: item.exportError = nil; return true
+                            case .failure(let e): item.exportError = e.message; return false
+                            }
+                        }
+                        return (i, converted ? out : nil)
+                    }
+                }
+                var got = [URL?](repeating: nil, count: targets.count)
+                for await (i, u) in group { got[i] = u }
+                return got
+            }
+            for (i, u) in urls.enumerated() where u == nil { failures.append(targets[i].displayName) }
+            let ok = urls.compactMap { $0 }
+            notice = failures.isEmpty ? nil
+                : "Falhou ao converter \(failures.count): \(failures.joined(separator: ", "))"
+            guard !ok.isEmpty else { return }
+            airDrop(ok)
+        }
     }
 
     // MARK: - Lote
@@ -398,6 +480,7 @@ final class Library {
             BatchJob(id: e.id, input: e.url, output: naming.output(for: e.found, title: docs[e.id]?.analysis?.title),
                      settings: store.effective(e.id))
         }
+        let jobSettings = Dictionary(uniqueKeysWithValues: jobs.map { ($0.id, $0.settings) })
         session.start(jobs: jobs, destination: dest) { [weak self] event in
             guard let self else { return }
             switch event {
@@ -408,6 +491,7 @@ final class Library {
                 case .converted(let r):
                     item.lastExport = r
                     item.lastExportURL = URL(fileURLWithPath: r.output)
+                    item.lastExportSettings = jobSettings[id]
                     item.exportError = nil
                 case .failed(let m): item.exportError = m
                 case .cancelled: break

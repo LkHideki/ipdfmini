@@ -467,3 +467,28 @@ private actor Counter {
         }
     }
 }
+
+// MARK: - Pasta temporária do AirDrop
+
+@Suite struct AirDropStagingTests {
+    @Test func uniqueNamesAvoidCollisionsCaseInsensitively() {
+        #expect(AirDropStaging.uniqueNames(["a — mini.pdf", "b.pdf", "A — mini.pdf", "a — mini.pdf", "x"])
+                == ["a — mini.pdf", "b.pdf", "A — mini 2.pdf", "a — mini 3.pdf", "x"])
+        #expect(AirDropStaging.uniqueNames(["x", "x"]) == ["x", "x 2"])
+    }
+
+    @Test func batchDirectoriesArePrivateAndOldOnesArePruned() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("airdrop-test-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let staging = AirDropStaging(root: root)
+        let old = try staging.makeBatchDirectory(), fresh = try staging.makeBatchDirectory()
+        #expect(old != fresh)
+        let perms = try FileManager.default.attributesOfItem(atPath: fresh.path)[.posixPermissions] as? Int
+        #expect(perms == 0o700)
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -7200)], ofItemAtPath: old.path)
+        #expect(staging.prune(olderThan: 3600) == 1)
+        #expect(!FileManager.default.fileExists(atPath: old.path))
+        #expect(FileManager.default.fileExists(atPath: fresh.path))
+        #expect(AirDropStaging(root: root.appendingPathComponent("nada")).prune() == 0)
+    }
+}

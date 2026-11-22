@@ -63,9 +63,10 @@ struct AppCommands: Commands {
             Button("Exportar e enviar por AirDrop…") { if let r = ready { library.export(r, thenAirDrop: true) } }
                 .keyboardShortcut("e", modifiers: [.command, .shift])
                 .disabled(ready == nil)
-            Button("Enviar por AirDrop…") { library.airDrop(library.shareCandidates) }
+            Button(library.sendTargets.count > 1 ? "Enviar \(library.sendTargets.count) marcados para o iPad"
+                                                   : "Enviar para o iPad") { library.sendToIPad() }
                 .keyboardShortcut("e", modifiers: [.command, .option])
-                .disabled(library.shareCandidates.isEmpty)
+                .disabled(!library.canSendToIPad)
             Divider()
             Button("Converter selecionados (\(library.queue.includedCount))…") { library.beginBatch() }
                 .keyboardShortcut("b", modifiers: [.command, .shift])
