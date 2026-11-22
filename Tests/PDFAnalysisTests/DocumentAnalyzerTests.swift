@@ -353,10 +353,13 @@ func bodyXHeightWithinFivePercent(size: CGFloat) async throws {
 // MARK: documento, concorrência, orçamento
 
 @Test func multiPageParallelIsDeterministic() async throws {
-    let pages = (0..<12).map { i in
-        PageSpec(media: i % 3 == 2 ? CGRect(x: 0, y: 0, width: 792, height: 612) : letter,
-                 rotation: i % 4 == 3 ? 90 : 0) { ctx in
-            Ink.paragraph(lines: 10 + i, size: 9 + CGFloat(i % 3), leading: 13, x: 60 + CGFloat(i), top: 560, seed: i, in: ctx)
+    let pages: [PageSpec] = (0..<12).map { (i: Int) -> PageSpec in
+        let media: CGRect = i % 3 == 2 ? CGRect(x: 0, y: 0, width: 792, height: 612) : letter
+        let rotation: Int = i % 4 == 3 ? 90 : 0
+        let size: CGFloat = 9 + CGFloat(i % 3)
+        let x: CGFloat = 60 + CGFloat(i)
+        return PageSpec(media: media, rotation: rotation) { ctx in
+            Ink.paragraph(lines: 10 + i, size: size, leading: 13, x: x, top: 560, seed: i, in: ctx)
         }
     }
     let data = TestPDF.make(pages)
