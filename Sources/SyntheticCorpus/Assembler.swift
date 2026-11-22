@@ -42,6 +42,10 @@ enum Assembler {
             $0.media.origin != .zero || $0.crop != nil || $0.trim != nil || $0.bleed != nil
         }
         // O PDFKit acrescenta TrimBox/BleedBox/ArtBox por conta própria: depois dele, sempre reescreve.
+        // Navegação fora do PDFKit do macOS 27.2: ver `BoxPatcher.applyOutline` e
+        // `BoxPatcher.resolvePageIndexDestinations`.
+        data = BoxPatcher.resolvePageIndexDestinations(data)
+        data = BoxPatcher.applyOutline(data, plan.outline.map(patchOutline))
         if needsPDFKit || customBoxes {
             data = BoxPatcher.apply(data, boxes: plan.pages.map {
                 BoxPatcher.Boxes(media: $0.media, crop: $0.crop, trim: $0.trim, bleed: $0.bleed)
@@ -58,6 +62,10 @@ enum Assembler {
             annotationCount: canvases.reduce(0) { $0 + $1.highlights.count },
             words: canvases.flatMap(\.words))
         return SyntheticDocument(scenario: scenario, data: data, truth: truth)
+    }
+
+    private static func patchOutline(_ o: OutlineItem) -> BoxPatcher.Outline {
+        BoxPatcher.Outline(title: o.title, page: o.page, point: o.point, children: o.children.map(patchOutline))
     }
 
     // MARK: PDF base (CGContext)
@@ -126,20 +134,6 @@ enum Assembler {
             }
         }
 
-        if !plan.outline.isEmpty {
-            let root = PDFOutline()
-            func add(_ items: [OutlineItem], to parent: PDFOutline) {
-                for (i, item) in items.enumerated() {
-                    let node = PDFOutline()
-                    node.label = item.title
-                    node.destination = PDFDestination(page: doc.page(at: item.page)!, at: item.point)
-                    parent.insertChild(node, at: i)
-                    add(item.children, to: node)
-                }
-            }
-            add(plan.outline, to: root)
-            doc.outlineRoot = root
-        }
         guard let out = doc.dataRepresentation() else { fatalError("SyntheticCorpus: PDFKit não serializou") }
         return out
     }

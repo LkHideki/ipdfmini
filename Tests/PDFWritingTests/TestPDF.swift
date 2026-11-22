@@ -2,6 +2,7 @@ import Foundation
 import CoreGraphics
 import CoreText
 import PDFKit
+import QPDFKit
 import MiniGeometry
 import LayoutEngine
 @testable import PDFWriting
@@ -93,22 +94,6 @@ enum TestPDF {
                 page.addAnnotation(a)
             }
         }
-        if !spec.outline.isEmpty {
-            let root = PDFOutline()
-            var lastTop: PDFOutline?
-            for entry in spec.outline {
-                let node = PDFOutline()
-                node.label = entry.title
-                node.destination = PDFDestination(page: doc.page(at: entry.page)!, at: CGPoint(x: 0, y: 700))
-                if entry.level == 0 || lastTop == nil {
-                    root.insertChild(node, at: root.numberOfChildren)
-                    lastTop = node
-                } else {
-                    lastTop!.insertChild(node, at: lastTop!.numberOfChildren)
-                }
-            }
-            doc.outlineRoot = root
-        }
         var attrs: [AnyHashable: Any] = [:]
         if let t = spec.title { attrs[PDFDocumentAttribute.titleAttribute] = t }
         if let a = spec.author { attrs[PDFDocumentAttribute.authorAttribute] = a }
@@ -120,7 +105,30 @@ enum TestPDF {
         if let u = userPassword { options[.userPasswordOption] = u }
         let ok = options.isEmpty ? doc.write(to: url) : doc.write(to: url, withOptions: options)
         precondition(ok, "falha ao gravar PDF de teste")
+        try fixNavigation(spec, at: url, encrypted: !options.isEmpty)
         return doc
+    }
+
+    /// O PDFKit do macOS 27.2 grava destinos de link criados em memória como "[/#2323N …]" e não
+    /// grava sumário novo. O qpdf conserta os destinos e grava o sumário da especificação.
+    static func fixNavigation(_ spec: TestDocSpec, at url: URL, encrypted: Bool) throws {
+        let hasInternal = spec.pages.contains { $0.internalLink != nil }
+        guard hasInternal || !spec.outline.isEmpty else { return }
+        precondition(!encrypted, "PDF de teste cifrado com navegação: o qpdf gravaria sem cifra")
+        let q = try QPDFDocument(contentsOf: url)
+        try q.resolvePageIndexDestinations()
+        var items: [QPDFDocument.OutlineItem] = []
+        var lastTop: Int?
+        for entry in spec.outline {
+            let dest = "[\(try q.sourcePageReference(entry.page)) /XYZ 0 700 null]"
+            let parent = entry.level == 0 ? nil : lastTop
+            items.append(.init(title: entry.title, parent: parent, destination: dest))
+            if parent == nil { lastTop = items.count - 1 }
+        }
+        if !items.isEmpty { try q.setOutline(items) }
+        let tmp = url.deletingLastPathComponent().appendingPathComponent(".\(UUID().uuidString).pdf")
+        try q.write(to: tmp)
+        _ = try FileManager.default.replaceItemAt(url, withItemAt: tmp)
     }
 
     static func noiseImage(side: Int, seed: UInt64) -> CGImage? {

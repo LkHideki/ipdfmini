@@ -89,6 +89,10 @@ int ipm_append_content(ipm_doc* doc, int output_page, const char* data, size_t l
 int ipm_output_page_object(ipm_doc* doc, int output_page, int* out_number, int* out_generation, char* error,
                            size_t error_capacity);
 
+/* Número e geração do objeto da página de origem (índice da abertura). */
+int ipm_source_page_object(ipm_doc* doc, int source_page, int* out_number, int* out_generation, char* error,
+                           size_t error_capacity);
+
 /* Acrescenta uma anotação (dicionário em sintaxe PDF) a /Annots da página de saída; /P é preenchido. */
 int ipm_add_annotation(ipm_doc* doc, int output_page, const char* pdf, size_t length, char* error,
                        size_t error_capacity);
@@ -126,6 +130,14 @@ int ipm_remove_source_page(ipm_doc* doc, int source_page, char* error, size_t er
 
 /* Remove as páginas originais da árvore de páginas; só as de saída ficam no documento. */
 int ipm_remove_source_pages(ipm_doc* doc, char* error, size_t error_capacity);
+
+/*
+ * Conserta destinos que o PDFKit do macOS 27.2 grava com um nome no lugar da página
+ * ("[/#2323N /XYZ …]" no arquivo, nome "#23N"; N = página 1-based, sem /Names): troca o nome pela
+ * referência à N-ésima página da abertura. Percorre /Dest e /A << /S /GoTo /D >> das anotações
+ * de todas as páginas e dos itens do sumário. *out_fixed recebe quantos destinos mudaram.
+ */
+int ipm_resolve_page_index_destinations(ipm_doc* doc, int* out_fixed, char* error, size_t error_capacity);
 
 /* Grava o documento com streams comprimidos e object streams; saída sem criptografia. */
 int ipm_write(ipm_doc* doc, const char* path, char* error, size_t error_capacity);

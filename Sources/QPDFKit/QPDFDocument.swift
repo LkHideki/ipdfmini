@@ -133,6 +133,13 @@ public final class QPDFDocument {
         return "\(number) \(generation) R"
     }
 
+    /// Referência PDF ("N G R") ao objeto da página de origem (índice da abertura).
+    public func sourcePageReference(_ sourcePage: Int) throws -> String {
+        var number: Int32 = 0, generation: Int32 = 0
+        try call { err, cap in ipm_source_page_object(handle, Int32(clamping: sourcePage), &number, &generation, err, cap) }
+        return "\(number) \(generation) R"
+    }
+
     /// Acrescenta uma anotação (dicionário em sintaxe PDF) à página de saída.
     public func addAnnotation(_ dictionary: String, toPage outputPage: Int) throws {
         try withBytes(dictionary) { p, n in
@@ -155,6 +162,15 @@ public final class QPDFDocument {
     /// Grava ou remove (`nil`) uma chave do dicionário Info (ex. "/Producer").
     public func setInfo(_ key: String, _ value: String?) throws {
         try call { err, cap in ipm_set_info_entry(handle, key, value, err, cap) }
+    }
+
+    /// Troca destinos "[/#2323N …]" gravados pelo PDFKit do macOS 27.2 pela referência à N-ésima
+    /// página (ver `ipm_resolve_page_index_destinations`). Devolve quantos destinos mudaram.
+    @discardableResult
+    public func resolvePageIndexDestinations() throws -> Int {
+        var fixed: Int32 = 0
+        try call { err, cap in ipm_resolve_page_index_destinations(handle, &fixed, err, cap) }
+        return Int(fixed)
     }
 
     /// Item do sumário; `parent` indexa um item anterior (nil = raiz).

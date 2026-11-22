@@ -107,7 +107,8 @@ public struct BoxWriter: PDFWriter {
         guard ok else { throw WriteError.writeFailed(url) }
         // O Quartz impõe o próprio Producer na gravação; regrava-se depois.
         let producer = "\(options.producer) recipe:\(options.recipeID ?? plan.recipe.id)"
-        if !InfoPatch.setProducer(producer, in: url) { warnings.append(.producerNotApplied) }
+        if try !Self.repairPageIndexDestinations(at: url, producer: producer),
+           !InfoPatch.setProducer(producer, in: url) { warnings.append(.producerNotApplied) }
 
         let bytes = Self.fileSize(url)
         let sourceBytes = Self.fileSize(source.url)
@@ -197,6 +198,29 @@ public struct BoxWriter: PDFWriter {
                 throw WriteError.unsupportedPlan("página de saída \(i): sourceRect inválido")
             }
         }
+    }
+
+    /// O PDFKit do macOS 27.2 grava todo destino de link criado em memória (os deslocados por
+    /// `shiftDestinations`, por exemplo) como "[/#2323N …]": um nome sem /Names, que nenhum leitor
+    /// resolve, e o link interno morre. Quando isso aparece, o qpdf troca o nome pela página N e
+    /// regrava o arquivo, já com o Producer (o qpdf grava xref em stream, que o `InfoPatch` não
+    /// trata). Devolve `true` se regravou.
+    static func repairPageIndexDestinations(at url: URL, producer: String) throws -> Bool {
+        // Bytes que o PDFKit grava: "/#2323" + página 1-based.
+        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe),
+              data.range(of: Data("/#2323".utf8)) != nil else { return false }
+        let doc = try QPDFDocument(contentsOf: url)
+        guard try doc.resolvePageIndexDestinations() > 0 else { return false }
+        try doc.setInfo("/Producer", producer)
+        let tmp = url.deletingLastPathComponent().appendingPathComponent(".\(UUID().uuidString).tmp.pdf")
+        do {
+            try doc.write(to: tmp)
+            _ = try FileManager.default.replaceItemAt(url, withItemAt: tmp)
+        } catch {
+            try? FileManager.default.removeItem(at: tmp)
+            throw error
+        }
+        return true
     }
 
     // MARK: - PDFKit

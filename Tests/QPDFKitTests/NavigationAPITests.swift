@@ -23,15 +23,18 @@ private func makeSource(_ url: URL) throws {
         ctx.endPDFPage()
     }
     ctx.closePDF()
-    let doc = try #require(PDFDocument(url: url))
-    let root = PDFOutline()
-    let old = PDFOutline()
-    old.label = "Antigo"
-    old.destination = PDFDestination(page: doc.page(at: 1)!, at: CGPoint(x: 0, y: 800))
-    root.insertChild(old, at: 0)
-    doc.outlineRoot = root
+    // Sumário "Antigo" gravado pelo qpdf: o PDFKit do macOS 27.2 não serializa mais um
+    // outlineRoot criado em memória. As páginas são recolocadas inteiras (mesma geometria).
+    let doc = try QPDFDocument(contentsOf: url)
+    let full = QPDFRect(llx: 0, lly: 0, urx: 600, ury: 800)
+    for s in 0..<2 {
+        let p = try doc.addPage(mediaBox: full)
+        try doc.place(sourcePage: s, onto: p, clip: full, matrix: .identity)
+    }
+    try doc.setOutline([.init(title: "Antigo", parent: nil, destination: "[\(try doc.outputPageReference(1)) /XYZ 0 800 null]")])
+    try doc.removeSourcePages()
     let tmp = url.deletingLastPathComponent().appendingPathComponent("tmp.pdf")
-    try #require(doc.write(to: tmp))
+    try doc.write(to: tmp)
     _ = try FileManager.default.replaceItemAt(url, withItemAt: tmp)
 }
 

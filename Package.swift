@@ -65,7 +65,7 @@ let package = Package(
         .testTarget(name: "MiniGeometryTests", dependencies: ["MiniGeometry"]),
         .testTarget(name: "PDFAnalysisTests", dependencies: ["PDFAnalysis", "SyntheticCorpus"]),
         .testTarget(name: "LayoutEngineTests", dependencies: ["LayoutEngine"]),
-        .testTarget(name: "PDFWritingTests", dependencies: ["PDFWriting", "SyntheticCorpus"]),
+        .testTarget(name: "PDFWritingTests", dependencies: ["PDFWriting", "QPDFKit", "SyntheticCorpus"]),
         .testTarget(name: "SyntheticCorpusTests", dependencies: ["SyntheticCorpus"]),
         // ipdfmini-cli: o aceite do M1 roda `convert` pela própria CLI (executável testável).
         .testTarget(name: "MiniKitTests", dependencies: ["MiniKit", "SyntheticCorpus", "ipdfmini-cli"]),
@@ -85,5 +85,5 @@ package.targets += [
     .target(name: "AppCore", dependencies: ["MiniKit", "MiniGeometry", "PDFAnalysis", "LayoutEngine", "PDFWriting"]),
     .executableTarget(name: "iPDFminiApp", dependencies: ["AppCore", "MiniKit", "MiniGeometry", "LayoutEngine", "PDFWriting"]),
     // ipdfmini-cli: o executável da CLI é o processo filho dos testes de isolamento.
-    .testTarget(name: "AppCoreTests", dependencies: ["AppCore", "MiniKit", "LayoutEngine", "PDFAnalysis", "MiniGeometry", "ipdfmini-cli"]),
+    .testTarget(name: "AppCoreTests", dependencies: ["AppCore", "MiniKit", "LayoutEngine", "PDFAnalysis", "MiniGeometry", "QPDFKit", "ipdfmini-cli"]),
 ]

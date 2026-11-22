@@ -18,6 +18,7 @@
 #include <memory>
 #include <mutex>
 #include <new>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -417,6 +418,19 @@ int ipm_output_page_object(ipm_doc* doc, int output_page, int* out_number, int* 
     });
 }
 
+int ipm_source_page_object(ipm_doc* doc, int source_page, int* out_number, int* out_generation, char* error,
+                           size_t error_capacity) {
+    return guarded(error, error_capacity, [&] {
+        ipm_doc& d = require_doc(doc);
+        if (out_number == nullptr || out_generation == nullptr) {
+            fail(IPM_ERR_ARGUMENT, "saidas nulas");
+        }
+        QPDFPageObjectHelper& page = source_at(d, source_page);
+        *out_number = page.getObjectHandle().getObjectID();
+        *out_generation = page.getObjectHandle().getGeneration();
+    });
+}
+
 int ipm_add_annotation(ipm_doc* doc, int output_page, const char* pdf, size_t length, char* error,
                        size_t error_capacity) {
     return guarded(error, error_capacity, [&] {
@@ -607,6 +621,89 @@ int ipm_remove_source_pages(ipm_doc* doc, char* error, size_t error_capacity) {
             helper.removePage(page);
         }
         d.sources_removed = true;
+    });
+}
+
+int ipm_resolve_page_index_destinations(ipm_doc* doc, int* out_fixed, char* error, size_t error_capacity) {
+    return guarded(error, error_capacity, [&] {
+        ipm_doc& d = require_doc(doc);
+        if (out_fixed == nullptr) {
+            fail(IPM_ERR_ARGUMENT, "out_fixed nulo");
+        }
+        int fixed = 0;
+        // Destino explícito: array cujo 1º elemento é o nome "/##N".
+        auto fix_array = [&](QPDFObjectHandle dest) {
+            if (!dest.isArray() || dest.getArrayNItems() < 1) {
+                return;
+            }
+            QPDFObjectHandle first = dest.getArrayItem(0);
+            if (!first.isName()) {
+                return;
+            }
+            // Bytes no arquivo: "/#2323N"; decodificado, o nome é "/#23N" (N = página 1-based).
+            std::string name = first.getName();
+            size_t prefix = 0;
+            if (name.compare(0, 4, "/#23") == 0) {
+                prefix = 4;
+            } else if (name.compare(0, 3, "/##") == 0) {
+                prefix = 3;
+            }
+            if (prefix == 0 || name.size() <= prefix) {
+                return;
+            }
+            int n = 0;
+            auto const* begin = name.data() + prefix;
+            auto const* end = name.data() + name.size();
+            auto [ptr, ec] = std::from_chars(begin, end, n);
+            if (ec != std::errc() || ptr != end || n < 1 || n > static_cast<int>(d.sources.size())) {
+                return;
+            }
+            dest.setArrayItem(0, d.sources[static_cast<size_t>(n - 1)].getObjectHandle());
+            ++fixed;
+        };
+        auto fix_holder = [&](QPDFObjectHandle dict) {
+            if (!dict.isDictionary()) {
+                return;
+            }
+            fix_array(dict.getKey("/Dest"));
+            QPDFObjectHandle action = dict.getKey("/A");
+            if (action.isDictionary() && action.getKey("/S").isNameAndEquals("/GoTo")) {
+                fix_array(action.getKey("/D"));
+            }
+        };
+        for (auto& page : d.sources) {
+            QPDFObjectHandle annots = page.getObjectHandle().getKey("/Annots");
+            if (!annots.isArray()) {
+                continue;
+            }
+            for (int i = 0; i < annots.getArrayNItems(); ++i) {
+                fix_holder(annots.getArrayItem(i));
+            }
+        }
+        // Sumário: /First e /Next, com guarda contra ciclos em arquivos malformados.
+        std::set<QPDFObjGen> seen;
+        std::vector<QPDFObjectHandle> stack;
+        QPDFObjectHandle outlines = d.pdf->getRoot().getKey("/Outlines");
+        if (outlines.isDictionary()) {
+            stack.push_back(outlines.getKey("/First"));
+        }
+        while (!stack.empty()) {
+            QPDFObjectHandle item = stack.back();
+            stack.pop_back();
+            if (!item.isDictionary()) {
+                continue;
+            }
+            QPDFObjGen og = item.getObjGen();
+            if (og.isIndirect()) {
+                if (!seen.insert(og).second) {
+                    continue;
+                }
+            }
+            fix_holder(item);
+            stack.push_back(item.getKey("/Next"));
+            stack.push_back(item.getKey("/First"));
+        }
+        *out_fixed = fixed;
     });
 }
 

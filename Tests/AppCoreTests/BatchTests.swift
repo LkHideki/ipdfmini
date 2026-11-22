@@ -2,6 +2,7 @@ import Foundation
 import LayoutEngine
 import MiniKit
 import PDFKit
+import QPDFKit
 import Testing
 @testable import AppCore
 
@@ -394,25 +395,22 @@ private actor Counter {
         let src = try await CorpusFiles.shared.pdf("arxivTwoColumn")
         let out = Scratch.url("arxivTwoColumn-sumario.pdf")
         if FileManager.default.fileExists(atPath: out.path) { return out }
+        // Sumário pelo qpdf: o PDFKit do macOS 27.2 não grava mais um outlineRoot criado em memória.
         let doc = try #require(PDFDocument(url: src))
-        let root = PDFOutline()
+        let q = try QPDFDocument(contentsOf: src)
+        var items: [QPDFDocument.OutlineItem] = []
+        func n(_ v: CGFloat) -> String { String(format: "%.2f", Double(v)) }
         for i in 0..<doc.pageCount {
-            let page = try #require(doc.page(at: i))
-            let box = page.bounds(for: .cropBox)
-            let node = PDFOutline()
-            node.label = "Seção \(i + 1)"
-            node.destination = PDFDestination(page: page, at: CGPoint(x: box.minX + 90, y: box.maxY - 140))
-            root.insertChild(node, at: root.numberOfChildren)
+            let box = try #require(doc.page(at: i)).bounds(for: .cropBox)
+            let ref = try q.sourcePageReference(i)
+            items.append(.init(title: "Seção \(i + 1)", parent: nil, destination: "[\(ref) /XYZ \(n(box.minX + 90)) \(n(box.maxY - 140)) null]"))
             if i == 0 {
-                let child = PDFOutline()
-                child.label = "Seção 1.1"
-                child.destination = PDFDestination(page: page, at: CGPoint(x: box.midX + 40, y: box.midY))
-                node.insertChild(child, at: 0)
+                items.append(.init(title: "Seção 1.1", parent: 0, destination: "[\(ref) /XYZ \(n(box.midX + 40)) \(n(box.midY)) null]"))
             }
         }
-        doc.outlineRoot = root
+        try q.setOutline(items)
         let tmp = Scratch.url("arxiv-\(UUID().uuidString).pdf")
-        #expect(doc.write(to: tmp))
+        try q.write(to: tmp)
         try? FileManager.default.moveItem(at: tmp, to: out)
         return out
     }
