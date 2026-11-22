@@ -11,7 +11,7 @@ Falhas de segurança não vão em issue pública: veja [SECURITY.md](SECURITY.md
 ## Ambiente
 
 - macOS 26 ou mais recente, Apple Silicon
-- Swift 6.2 (Xcode 26 ou só as Command Line Tools)
+- Swift 6.4 ou mais recente (Xcode 27 ou só as Command Line Tools)
 
 ```sh
 swift build
@@ -38,7 +38,7 @@ Com o Xcode selecionado, `swift test` também funciona; o `scripts/test.sh` exis
 ## Pull requests
 
 - Um assunto por PR, com teste quando a mudança tem comportamento verificável.
-- A suíte precisa passar; o CI roda em `macos-26`.
+- A suíte precisa passar; o CI roda com o Xcode 27.
 - Comentários e mensagens da interface estão em português; mensagens de commit, em inglês.
 - Ao mexer em `Vendor/`, siga o roteiro de atualização de `Vendor/README.md` e mantenha os avisos de licença.
 

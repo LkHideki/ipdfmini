@@ -14,12 +14,15 @@ concurrency:
 
 jobs:
   test:
-    runs-on: macos-26
+    # Imagem com Xcode 27: o Swift 6.3 do Xcode 26 não compila o projeto.
+    runs-on: xcode-27
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Toolchain
-        run: swift --version
+        run: |
+          sudo xcode-select -s /Applications/Xcode_27.2.app
+          swift --version
       - name: Build
         run: swift build --build-tests
       - name: Test

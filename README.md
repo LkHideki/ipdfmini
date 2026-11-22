@@ -17,7 +17,7 @@ Toda saída passa por uma validação antes de ser entregue: nada de texto corta
 ## Requisitos
 
 - macOS 26 ou mais recente, Apple Silicon
-- Swift 6.2 (as Command Line Tools bastam; o Xcode não é necessário)
+- Swift 6.4 ou mais recente (Xcode 27 ou só as Command Line Tools)
 
 ## Instalar
 
