@@ -1,0 +1,37 @@
+iPDFmini
+Copyright 2026 LkHideki
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product includes third-party software, distributed under its own
+licenses. The full license texts are in the paths listed below and are copied
+into Contents/Resources/Licenses/ of the built iPDFmini.app.
+
+-------------------------------------------------------------------------------
+qpdf 12.4.2  (Vendor/qpdf/)
+https://qpdf.sourceforge.io
+Copyright (c) 2005-2021 Jay Berkenbilt, 2022-2026 Jay Berkenbilt and
+Manfred Holger.
+Apache License 2.0 (Vendor/qpdf/LICENSE.txt). Versions before 7 were also
+offered under the Artistic License 2.0 (Vendor/qpdf/Artistic-2.0). qpdf's own
+NOTICE (Vendor/qpdf/NOTICE.md) covers the bundled public-domain Rijndael code
+and the sphlib 3.0 SHA-2 code (MIT-style license, Projet RNRT SAPHIR).
+Only a subset of the upstream sources is included; files written for this
+project (qpdf-config.h, capi/, ipm/) are listed in Vendor/README.md.
+
+-------------------------------------------------------------------------------
+libjpeg-turbo 3.2.1  (Vendor/libjpeg-turbo/)
+https://libjpeg-turbo.org
+This software is based in part on the work of the Independent JPEG Group.
+IJG License (Vendor/libjpeg-turbo/README.ijg), Modified (3-clause) BSD License
+and zlib License (Vendor/libjpeg-turbo/LICENSE.md).
+Copyright (C) 1991-2020 Thomas G. Lane, Guido Vollbeding;
+Copyright (C) 2009-2026 D. R. Commander; and other contributors listed in
+LICENSE.md. Only a subset of the upstream sources is included, and three
+configuration headers were generated with CMake; see Vendor/README.md.
+
+-------------------------------------------------------------------------------
+Swift Argument Parser  (SwiftPM dependency, not vendored)
+https://github.com/apple/swift-argument-parser
+Copyright (c) 2020 Apple Inc. and the Swift project authors.
+Apache License 2.0 with Runtime Library Exception.

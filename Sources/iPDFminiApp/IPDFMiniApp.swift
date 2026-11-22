@@ -118,7 +118,10 @@ struct AppCommands: Commands {
 
     private func showAbout() {
         let credits = NSAttributedString(
-            string: "Adapta PDFs à tela do iPad mini 7: recorte de margens com escala travada, letra fisicamente legível e navegação preservada.",
+            string: "Adapta PDFs à tela do iPad mini 7: recorte de margens com escala travada, letra fisicamente legível e navegação preservada.\n\n"
+                + "Usa qpdf (Apache 2.0), libjpeg-turbo e Swift Argument Parser (Apache 2.0). "
+                + "This software is based in part on the work of the Independent JPEG Group. "
+                + "Licenças completas em iPDFmini.app/Contents/Resources/Licenses.",
             attributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize), .foregroundColor: NSColor.secondaryLabelColor])
         NSApp.orderFrontStandardAboutPanel(options: [.credits: credits])
         NSApp.activate()

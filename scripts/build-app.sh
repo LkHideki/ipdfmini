@@ -38,6 +38,15 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Helpers" "$APP/Contents/Resources"
 cp "$BIN/iPDFminiApp" "$APP/Contents/MacOS/iPDFmini"
 cp "$BIN/ipdfmini" "$APP/Contents/Helpers/ipdfmini"
 cp "$WORK/icon/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
+# Licenças: a do projeto e as de terceiros embutidos (Apache 2.0 §4(d), IJG (2)).
+LIC="$APP/Contents/Resources/Licenses"
+mkdir -p "$LIC/qpdf" "$LIC/libjpeg-turbo" "$LIC/swift-argument-parser"
+cp LICENSE NOTICE "$LIC/"
+cp Vendor/qpdf/LICENSE.txt Vendor/qpdf/NOTICE.md Vendor/qpdf/Artistic-2.0 "$LIC/qpdf/"
+cp Vendor/libjpeg-turbo/LICENSE.md Vendor/libjpeg-turbo/README.ijg "$LIC/libjpeg-turbo/"
+SAP_LICENSE="$(find .build/checkouts/swift-argument-parser -maxdepth 1 -name 'LICENSE*' | head -1)"
+[ -n "$SAP_LICENSE" ] || { echo "licença do swift-argument-parser não encontrada em .build/checkouts" >&2; exit 1; }
+cp "$SAP_LICENSE" "$LIC/swift-argument-parser/LICENSE.txt"
 BUILD_NUMBER="$(date +%Y%m%d%H%M)"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -58,7 +67,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSPrincipalClass</key><string>NSApplication</string>
-    <key>NSHumanReadableCopyright</key><string>iPDFmini $VERSION</string>
+    <key>NSHumanReadableCopyright</key><string>© 2026 LkHideki · Apache License 2.0</string>
     <key>NSSupportsAutomaticTermination</key><false/>
     <key>CFBundleDocumentTypes</key>
     <array>

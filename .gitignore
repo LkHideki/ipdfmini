@@ -5,3 +5,9 @@ DerivedData/
 .DS_Store
 /out/
 .claude/worktrees/
+
+# Notas locais de planejamento e handoff: não versionar.
+HUMAN.md
+PLAN.md
+SPIKES.md
+docs/
