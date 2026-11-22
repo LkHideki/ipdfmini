@@ -5,12 +5,12 @@ import MiniGeometry
 import PDFAnalysis
 import PDFWriting
 
-// Fachada do núcleo: analisar → decidir/planejar → escrever → validar. PLAN.md §4.
-// Sem AppKit: o núcleo precisa compilar no iPadOS (§12.6).
+// Fachada do núcleo: analisar → decidir/planejar → escrever → validar.
+// Sem AppKit: o núcleo precisa compilar no iPadOS.
 
 /// Como escolher a estratégia.
 public enum ConversionMode: String, Codable, Sendable, CaseIterable {
-    /// Motor de decisão (§8) entre E0, E1 (E2 com a opção), E3, E4 e E5, no perfil e no perfil girado.
+    /// Motor de decisão entre E0, E1 (E2 com a opção), E3, E4 e E5, no perfil e no perfil girado.
     case auto
     /// Força E1.
     case crop
@@ -41,7 +41,7 @@ public enum ConversionMode: String, Codable, Sendable, CaseIterable {
     }
 }
 
-/// Escritor que grava cada estratégia. PLAN.md §9.1.
+/// Escritor que grava cada estratégia.
 public extension StrategyID {
     /// E3 em diante distribui uma página de origem por várias telas; E0–E2 mantêm a página inteira.
     static func splitsPages(_ s: StrategyID) -> Bool { s.fidelityCost > StrategyID.aggressiveCrop.fidelityCost }
@@ -66,7 +66,7 @@ public struct ConversionOptions: Sendable, Equatable {
     /// Senha de usuário do PDF de origem.
     public var password: String?
     /// Permite ao modo auto remover cabeçalho, rodapé e número de página (E2).
-    /// Desligado por padrão: confundir nota de rodapé com rodapé apaga conteúdo (§18, R5).
+    /// Desligado por padrão: confundir nota de rodapé com rodapé apaga conteúdo.
     public var removeHeaderFooter: Bool
     /// Deixa E3, E4 e E5 entrarem na disputa (e na tabela de candidatos). Desligado por
     /// padrão: dividir a página manda parte dela para outra tela, e a regra é 1 → 1.
@@ -122,7 +122,7 @@ public struct Converter: Sendable {
         return s
     }
 
-    /// Perfil escolhido e o girado (§8: estratégia × orientação).
+    /// Perfil escolhido e o girado (estratégia × orientação).
     static func profiles(_ o: ConversionOptions) -> [ViewportProfile] { [o.profile, o.profile.rotated] }
 
     /// E3 só existe em paisagem e E4 só em retrato: a estimativa na outra orientação
@@ -146,7 +146,7 @@ public struct Converter: Sendable {
         return try plan(analysis: doc, options: options)
     }
 
-    /// Replaneja sem reanalisar (pré-visualização, §16).
+    /// Replaneja sem reanalisar (pré-visualização).
     public func plan(analysis doc: DocumentAnalysis, options: ConversionOptions) throws -> PlanResult {
         // A tabela de candidatos sai sempre completa; o modo só fixa o escolhido.
         let strategies = Self.strategies(options)
@@ -168,7 +168,7 @@ public struct Converter: Sendable {
             }
             chosenIndex = i
         } else {
-            // A orientação faz parte do perfil escolhido (§3): só gira quando nada na
+            // A orientação faz parte do perfil escolhido: só gira quando nada na
             // orientação pedida chega ao mínimo. Sem isso um livro 6×9 ia para fatias
             // em paisagem (2,6 telas por página) em vez do recorte em retrato.
             let legibility = options.recipe.legibility

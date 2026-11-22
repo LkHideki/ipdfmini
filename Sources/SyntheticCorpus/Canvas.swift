@@ -17,7 +17,7 @@ enum Face {
 
     /// Fonte criada uma vez por (nome, corpo), sob lock. CTFontCreateWithName
     /// concorrente travou o processo (threads presas no XPC do registro de
-    /// fontes, como no SPIKES.md S3) quando vários cenários eram gerados em
+    /// fontes) quando vários cenários eram gerados em
     /// paralelo. CTFont é imutável: depois de criada, compartilhar é seguro.
     static func make(_ name: String, _ size: CGFloat) -> CTFont {
         let key = "\(name)@\(size)"

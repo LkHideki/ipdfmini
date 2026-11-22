@@ -5,7 +5,7 @@ import Testing
 import MiniGeometry
 @testable import SyntheticCorpus
 
-/// Cenários do M3: verdade de blocos, colunas e ordem de leitura (PLAN.md §5.6, §15.1).
+/// Cenários do M3: verdade de blocos, colunas e ordem de leitura.
 let blockScenarios: [Scenario] = [.arxivTwoColumn, .reportWithFigures, .tallFigure]
 
 /// Limiar de "pixel de tinta" no raster a 2 px/pt, o mesmo de `rasterInkBox`.
@@ -126,7 +126,7 @@ private func darkPixels(_ data: Data, page index: Int) throws -> (rects: [CGRect
         }
     }
 
-    /// Ordem de referência (§5.6): largura total de cima para baixo, intercalada nas posições
+    /// Ordem de referência: largura total de cima para baixo, intercalada nas posições
     /// certas; dentro de uma seção de colunas, esquerda inteira antes da direita, cada uma de cima
     /// para baixo. Espaço de página: y para cima.
     @Test(arguments: blockScenarios)
@@ -216,7 +216,7 @@ private func darkPixels(_ data: Data, page index: Int) throws -> (rects: [CGRect
     }
 
     /// A tabela é o contraexemplo da calha: vãos verticais entre colunas de células e entre a
-    /// borda e o texto, todos mais estreitos que 8 pt (PLAN.md §5.6), e vários.
+    /// borda e o texto, todos mais estreitos que 8 pt, e vários.
     @Test func tableGapsAreNarrowerThanAGutter() throws {
         let doc = Fixtures.doc(.arxivTwoColumn)
         let table = try #require(doc.truth.pages[2].blocks.first { $0.type == "table" })

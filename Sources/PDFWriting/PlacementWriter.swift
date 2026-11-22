@@ -5,7 +5,7 @@ import MiniGeometry
 import LayoutEngine
 import QPDFKit
 
-/// Escritor por colocações (qpdf). PLAN.md §9.1, E3–E6.
+/// Escritor por colocações (qpdf).
 ///
 /// Cada página de origem vira um Form XObject único (o content stream é gravado
 /// uma vez) e cada colocação o referencia com clip e matriz. Links, sumário,
@@ -14,7 +14,7 @@ import QPDFKit
 /// até 3,3× o tamanho). O PDFKit só lê a origem (anotações e sumário).
 /// Escrita atômica: temporário no diretório do destino e `rename` no fim.
 public struct PlacementWriter: PDFWriter {
-    /// Saída acima disto × a origem gera aviso (§9.3/§17 M3, vetor).
+    /// Saída acima disto × a origem gera aviso (vetor).
     public var sizeBudget: Double
     /// `PageLabels` com o número da página de origem (o leitor mostra "37" nas fatias da p. 37).
     public var writesPageLabels: Bool
@@ -31,7 +31,7 @@ public struct PlacementWriter: PDFWriter {
 
     /// Entradas do catálogo que apontam para as páginas removidas ou descrevem a estrutura
     /// antiga (tags, formulários): ficariam quebradas e arrastariam objetos mortos para a saída.
-    /// O XMP (`/Metadata`) sai porque contradiria o Info novo (Producer com a receita, §12.2).
+    /// O XMP (`/Metadata`) sai porque contradiria o Info novo (Producer com a receita).
     static let staleCatalogKeys = ["/Outlines", "/Dests", "/OpenAction", "/AcroForm", "/StructTreeRoot",
                                    "/MarkInfo", "/PageLabels", "/Threads", "/Metadata"]
 
@@ -177,7 +177,7 @@ public struct PlacementWriter: PDFWriter {
         return ranges.isEmpty ? nil : "<< /Nums [\(ranges.joined(separator: " "))] >>"
     }
 
-    /// Título e autor como no `BoxWriter`; `Producer` com o id da receita (§12.2).
+    /// Título e autor como no `BoxWriter`; `Producer` com o id da receita.
     static func applyMetadata(_ doc: QPDFDocument, plan: LayoutPlan, options: WriteOptions) throws {
         if options.clearMetadata {
             for key in ["/Title", "/Author", "/Subject", "/Keywords", "/Creator"] { try doc.setInfo(key, nil) }

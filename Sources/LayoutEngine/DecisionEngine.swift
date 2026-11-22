@@ -2,7 +2,7 @@ import CoreGraphics
 import MiniGeometry
 import PDFAnalysis
 
-// Motor de decisão. PLAN.md §8.
+// Motor de decisão.
 
 /// Um candidato = estratégia × perfil (orientação), com a estimativa barata.
 public struct Candidate: Sendable, Equatable {
@@ -90,7 +90,7 @@ public struct DecisionEngine: Sendable {
         max(overrides[e.strategy] ?? e.fidelityCost, StrategyID.crop.fidelityCost)
     }
 
-    /// Regra §8: menor custo de fidelidade com corpo ≥ alvo; senão menor custo com
+    /// Regra de decisão: menor custo de fidelidade com corpo ≥ alvo; senão menor custo com
     /// corpo ≥ mínimo; senão maior legibilidade. Empate: menos telas por página.
     public static func rank(_ candidates: [Candidate], legibility: Legibility,
                             costOverrides: [StrategyID: Int] = [:]) -> [Candidate] {

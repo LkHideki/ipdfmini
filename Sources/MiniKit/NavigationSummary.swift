@@ -4,7 +4,7 @@ import LayoutEngine
 import PDFKit
 import PDFWriting
 
-/// Contagens de navegação da conversão (§9.2), para a interface mostrar
+/// Contagens de navegação da conversão, para a interface mostrar
 /// "Sumário: N de N preservados" sem garimpar as métricas do invariante 5.
 ///
 /// Campo opcional em `ConversionReport`: JSON antigo (sem ele) continua decodificável.

@@ -49,7 +49,7 @@ import PDFAnalysis
         #expect(plan.recipe.strategy == .crop)
     }
 
-    /// Tabela §2.3: mancha 324×518, 10 pt. Sem respiro a escala é 0,9662 (9,7 pt);
+    /// Livro 6×9: mancha 324×518, 10 pt. Sem respiro a escala é 0,9662 (9,7 pt);
     /// com respiro de 2 mm (5,67 pt) cai para 0,9455 → corpo 9,45 pt, 1,568 mm de altura-x.
     /// Os cantos (9,5 pt) ficam livres pela folga lateral sem custo extra.
     @Test func matchesTable23() {

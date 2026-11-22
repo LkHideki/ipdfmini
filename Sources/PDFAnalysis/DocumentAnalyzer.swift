@@ -9,7 +9,7 @@ public enum AnalysisError: Error, Equatable, Sendable {
     case locked
 }
 
-/// Ponto de entrada da análise. PLAN.md §5 e §14.2.
+/// Ponto de entrada da análise.
 public struct DocumentAnalyzer: Sendable {
     public struct Options: Sendable, Equatable {
         /// Resolução do raster de análise (2 px/pt = 144 dpi).

@@ -7,7 +7,7 @@ import PDFAnalysis
 import PDFKit
 import PDFWriting
 
-// Invariantes verificados em toda saída. PLAN.md §15.2.
+// Invariantes verificados em toda saída.
 
 public enum InvariantStatus: String, Codable, Sendable {
     case passed, failed, notApplicable
@@ -102,9 +102,9 @@ public struct Validator: Sendable {
     public var aspectTolerance: Double
     /// Inv. 5: folga para o ponto de destino e o retângulo de link (pt).
     public var destinationTolerancePt: CGFloat
-    /// Inv. 6: saída ≤ orçamento × origem. BoxWriter: 1,1× (§9.3, vetor).
+    /// Inv. 6: saída ≤ orçamento × origem. BoxWriter: 1,1× (vetor).
     public var boxSizeBudget: Double
-    /// Inv. 6 com PlacementWriter: 1,3× (critério do M3, §17).
+    /// Inv. 6 com PlacementWriter: 1,3× (critério do M3).
     public var placementSizeBudget: Double
     /// Inv. 7: erro máximo de ida e volta (pt).
     public var roundTripTolerancePt: CGFloat
@@ -348,7 +348,7 @@ public struct Validator: Sendable {
     /// Referência de 1b, por colocação: a janela renderizada direto da origem, na
     /// escala da colocação e recortada à área visível da origem. Região comparada:
     /// - BoxWriter: a página exibida inteira (escala 1), na grade da própria caixa (a origem
-    ///   fica na janela pelo qpdf, ou vai a (0,0) quando o PDFKit grava, SPIKES.md S2);
+    ///   fica na janela pelo qpdf, ou vai a (0,0) quando o PDFKit grava);
     /// - PlacementWriter: `transform(sourceRect)` na página de saída.
     /// As duas grades de pixels partem do mesmo canto da janela, então dá para
     /// comparar pixel a pixel, não só a contagem.
@@ -652,7 +652,7 @@ public struct Validator: Sendable {
         let ok = ratio <= budget
         var detail = "saída \(Describe.number(ratio, decimals: 3))× a origem"
             + (ok ? " (meta ≤ \(Describe.number(budget))×)" : ", acima de \(Describe.number(budget))×")
-        // §9.3 pede ≤ 0,6× em scan colorido, o que exige reamostrar (M4); aqui só o teto de vetor.
+        // A meta é ≤ 0,6× em scan colorido, o que exige reamostrar (M4); aqui só o teto de vetor.
         if analysis.kind == .scannedBook { detail += "; meta de scan (≤ 0,6×) depende da reamostragem do M4" }
         return InvariantResult(id: "6", title: "Tamanho", status: ok ? .passed : .failed, detail: detail,
                                metrics: [Metric("origem", Double(sourceBytes), "B"), Metric("saída", Double(outputBytes), "B"),

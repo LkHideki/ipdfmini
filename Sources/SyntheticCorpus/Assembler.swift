@@ -12,7 +12,7 @@ struct PageSpec {
     var rotation = 0
     var draw: (Canvas) -> Void
 
-    /// Caixa efetiva (PLAN.md §5.1): `TrimBox` quando existe, senão `CropBox ∩ MediaBox`.
+    /// Caixa efetiva: `TrimBox` quando existe, senão `CropBox ∩ MediaBox`.
     var effectiveBox: CGRect { trim ?? crop.map { $0.intersection(media) } ?? media }
 }
 

@@ -1,7 +1,7 @@
 import CoreGraphics
 import PDFAnalysis
 
-// Classes de página para a escala travada. PLAN.md §6.1.1.
+// Classes de página para a escala travada.
 
 enum PageClassifier {
     /// Tolerância relativa para considerar dois tamanhos de página iguais

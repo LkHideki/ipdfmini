@@ -28,7 +28,7 @@ enum TestFiles {
 }
 
 /// Cada cenário é gerado uma vez só, em série: geração concorrente já travou
-/// o processo na criação de fontes do CoreText (SPIKES.md S3).
+/// o processo na criação de fontes do CoreText.
 enum CorpusCache {
     private static let lock = NSRecursiveLock()
     nonisolated(unsafe) private static var docs: [Scenario: SyntheticDocument] = [:]

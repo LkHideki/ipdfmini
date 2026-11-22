@@ -2,7 +2,7 @@ import CoreGraphics
 import MiniGeometry
 import PDFAnalysis
 
-// Escala travada por classe, encaixe e respiro. PLAN.md §6.1–§6.3.
+// Escala travada por classe, encaixe e respiro.
 // Tudo em espaço de página; a janela sempre tem a proporção exata do viewport.
 
 enum CropMath {
@@ -89,7 +89,7 @@ struct CropFrame: Sendable {
         cornerClear = R / f.scale
         // Folga lateral repartida: mancha limitada pela altura não fica encostada à esquerda.
         gapLeft = (size.width - refInk.width) / 2
-        // §6.2: topo; se os cantos dependem do topo/base, o respiro do topo sobe até R/s.
+        // topo; se os cantos dependem do topo/base, o respiro do topo sobe até R/s.
         gapTop = f.cornersBySides ? r : max(r, R / f.scale)
     }
 
@@ -213,7 +213,7 @@ struct CropLayout: Sendable {
 }
 
 enum CropLayoutEngine {
-    /// Respiro mínimo (§6.3). Tinta além da mancha de referência pode consumir o
+    /// Respiro mínimo. Tinta além da mancha de referência pode consumir o
     /// respiro até aqui antes de virar exceção, para não multiplicar escalas por 1 pt.
     static let minimumMarginMM: CGFloat = 1
     /// Desvio horizontal além da faixa de referência que pede correção por página.
@@ -263,7 +263,7 @@ enum CropLayoutEngine {
                 let removed = removeHeaderFooter && page.usableBodyInk != nil ? page.removedHeaderFooter : []
                 // Ordem: janela da classe; com bloco removido impossível de deixar inteiro
                 // fora, a da classe com a tinta completa (o bloco entra inteiro); só então
-                // escala própria (§6.1.5), primeiro sem os blocos, depois com tudo.
+                // escala própria, primeiro sem os blocos, depois com tudo.
                 func classWindow(_ ink: CGRect, _ blocks: [CGRect]) -> PageWindow? {
                     guard let w = frame.window(for: ink, pageBox: box, minMargin: m, threshold: threshold),
                           let a = frame.avoiding(blocks, window: w, ink: ink, minMargin: m) else { return nil }

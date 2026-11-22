@@ -2,7 +2,7 @@ import CoreGraphics
 import MiniGeometry
 import PDFAnalysis
 
-// Fatiamento por programação dinâmica. PLAN.md §7 (E3–E5).
+// Fatiamento por programação dinâmica.
 // Corta só nos vãos entre unidades; nunca dentro de linha ou bloco atômico.
 
 /// Unidade cortável, em espaço de página.

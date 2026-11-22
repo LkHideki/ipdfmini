@@ -25,7 +25,7 @@ public struct ScanResult: Sendable, Equatable {
     public var rejected: [URL] = []
 }
 
-/// Varre arquivos e pastas atrás de PDFs (§13: arrastar pastas, "Abrir…").
+/// Varre arquivos e pastas atrás de PDFs (arrastar pastas, "Abrir…").
 ///
 /// Recursiva; ignora ocultos e pacotes (.app, .pages…); segue symlinks de pasta
 /// com conjunto de visitadas (sem laço). PDF = tipo UTType conforme a `com.adobe.pdf`

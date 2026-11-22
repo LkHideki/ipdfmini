@@ -8,7 +8,7 @@ import PDFAnalysis
 enum Fx {
     static let book = CGSize(width: 432, height: 648)        // 6×9 in
     static let a4 = CGSize(width: 595, height: 842)
-    /// Mancha de livro 6×9 da tabela §2.3.
+    /// Mancha de livro 6×9 (324 × 518 pt).
     static let mancha = CGSize(width: 324, height: 518)
     /// Corpo de 10 pt (altura-x = 0,47 × corpo).
     static let bodyX10: CGFloat = 4.7

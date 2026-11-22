@@ -16,7 +16,7 @@ struct PageWork: Sendable, Equatable {
     var inkRows: InkRows? = nil
 }
 
-/// Análise de uma página. PLAN.md §5.1–§5.6.
+/// Análise de uma página.
 enum PageAnalyzer {
     struct TextLine {
         var text: String
@@ -83,7 +83,7 @@ enum PageAnalyzer {
         var mask = scanLike ? InkMask.scan(raster, histogram: hist, background: bg)
                             : InkMask.vector(raster, background: bg)
 
-        // §5.1/§5.4: TrimBox menor com tinta fora dela (marcas de corte) → parte-se da TrimBox
+        // TrimBox menor com tinta fora dela (marcas de corte) → parte-se da TrimBox
         var effective = visible
         var pendingIgnored: [(CGRect, String)] = []   // em espaço de página de g0
         if let trim = PageBoxReader.candidateTrim(boxes, visible: visible) {
@@ -102,7 +102,7 @@ enum PageAnalyzer {
         func toFinal(_ r: CGRect) -> CGRect { g.toPage(g0.toUser(r)) }
         let effectivePage0 = g0.toPage(effective)
 
-        // §5.4: carimbo lateral do arXiv, só na página 1
+        // carimbo lateral do arXiv, só na página 1
         var excluded = Set<Int>()
         let pageW = g0.pageBox.width
         if index == 0 {
@@ -118,7 +118,7 @@ enum PageAnalyzer {
                 excluded.insert(i)
             }
         }
-        // Fora do escopo do M1: marca-d'água diagonal (§5.4, ignorar no cálculo)
+        // Fora do escopo do M1: marca-d'água diagonal (ignorar no cálculo)
         // e numeração de linhas na margem (opção de remover).
         for (r, reason) in pendingIgnored { warnings.append(.ignoredRegion(toFinal(r), reason: reason)) }
 
@@ -136,7 +136,7 @@ enum PageAnalyzer {
             inkPage0 = clipped.isNull ? nil : clipped
         }
 
-        // §5.5: linhas e altura-x
+        // linhas e altura-x
         var lines: [(line: Line, text: String)] = []
         var texts: [TextBox] = []   // espaço de página de g0, na ordem do texto extraído
         var samples: [XHeightSample] = []
@@ -185,7 +185,7 @@ enum PageAnalyzer {
         }
         lines.sort { $0.line.rect.maxY != $1.line.rect.maxY ? $0.line.rect.maxY > $1.line.rect.maxY : $0.line.rect.minX < $1.line.rect.minX }
 
-        // §5.3 refino: texto + imagens contra o raster
+        // texto + imagens contra o raster
         if hasVisibleText, let ink = inkPage0 {
             var u = CGRect.null
             for l in usable { u = u.union(g0.toPage(l.userRect)) }
@@ -209,7 +209,7 @@ enum PageAnalyzer {
         }
         let modes = XHeightStats.modes(samples)
 
-        // §5.6: XY-cut sobre a mesma máscara. Raiz = caixa de tinta: em scan, o
+        // XY-cut sobre a mesma máscara. Raiz = caixa de tinta: em scan, o
         // salpico fora dela (linhas com < k pixels) não conta como tinta, como na caixa.
         var blocks: [Block] = []
         if let b = inkPx {

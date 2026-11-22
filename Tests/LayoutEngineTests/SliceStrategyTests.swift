@@ -11,7 +11,7 @@ func ptEquivalent(_ mm: Double?) -> Double { Legibility.pointSizeEquivalent(xHei
     let portrait = ViewportProfile.booksPortrait
     let landscape = ViewportProfile.booksLandscape
 
-    /// Propriedade (§15.3): em 144 páginas aleatórias (semente fixa), nenhuma
+    /// Propriedade: em 144 páginas aleatórias (semente fixa), nenhuma
     /// unidade cortada nem repetida, tinta toda coberta, ordem de leitura, proporção,
     /// nada fora da página nem nos cantos — em E3, E4 e E5 nas duas orientações.
     @Test func randomPagesNeverCutUnits() {
@@ -41,7 +41,7 @@ func ptEquivalent(_ mm: Double?) -> Double { Legibility.pointSizeEquivalent(xHei
         #expect(multiSlice > 200)
     }
 
-    /// §2.3, A4 com mancha 451 × 698 em paisagem: a tabela dá 1,110 → 11,1 pt e
+    /// A4 com mancha 451 × 698 em paisagem: a escala é 1,110 → 11,1 pt e
     /// 2,36 telas sem respiro. Com respiro de 2 mm: (500,47 − 11,34)/451 = 1,0845
     /// → 10,85 pt. Altura útil 328,64 − 2·9,5 (cantos: a mancha encosta nas laterais)
     /// = 309,6 pt → 698·1,0845/309,6 = 2,44 telas contínuas; como cada página de
@@ -80,9 +80,9 @@ func ptEquivalent(_ mm: Double?) -> Double { Legibility.pointSizeEquivalent(xHei
     }
 
     /// Artigo em 2 colunas (Letter, colunas 252 × 665, corpo 10 pt) no E5 retrato.
-    /// §7: escala = min(Vw/larguraColuna, alvo/alturaX) = min(1,259; 1,60 mm/4,7 pt
-    /// = 0,965) → 9,65 pt (o alvo). A §2.3 (1,10 "teto" → 11 pt, 1,46 tela/coluna)
-    /// não sai da fórmula da §7 com alvo de 1,60 mm: 11 pt pediria alvo ≈ 1,82 mm.
+    /// escala = min(Vw/larguraColuna, alvo/alturaX) = min(1,259; 1,60 mm/4,7 pt
+    /// = 0,965) → 9,65 pt (o alvo). A estimativa antiga (1,10 "teto" → 11 pt, 1,46 tela/coluna)
+    /// não sai da fórmula de fatiamento com alvo de 1,60 mm: 11 pt pediria alvo ≈ 1,82 mm.
     /// Telas: coluna de 665·0,965 = 641,7 pt em altura útil de 485,8 pt (1,32 contínua);
     /// com o fim da coluna 1 e o começo da 2 empilhados, 3 telas por página = 1,5 por coluna.
     @Test func twoColumnArticleColumnsMatchTable23() {
@@ -109,7 +109,7 @@ func ptEquivalent(_ mm: Double?) -> Double { Legibility.pointSizeEquivalent(xHei
         #expect(xs.count == 1)
     }
 
-    /// §8: com E1 abaixo do mínimo, a decisão fica com E5 em retrato (E3 reduz a
+    /// com E1 abaixo do mínimo, a decisão fica com E5 em retrato (E3 reduz a
     /// seção de colunas inteira; E4 encolhe pela largura). E5 em paisagem empata em
     /// legibilidade e custo e perde por telas por página.
     @Test func decisionChoosesColumnsForTwoColumnArticle() {

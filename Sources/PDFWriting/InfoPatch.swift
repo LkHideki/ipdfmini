@@ -3,7 +3,7 @@ import Foundation
 /// Regrava o `Producer` por atualização incremental.
 ///
 /// O Quartz sobrescreve o `Producer` em todo `PDFDocument.write` (verificado:
-/// o valor em `documentAttributes` é ignorado), e o §12.2 depende dele para
+/// o valor em `documentAttributes` é ignorado), e a devolução de anotações ao original depende dele para
 /// vincular a saída à receita. Em vez de reescrever o arquivo, acrescenta-se ao
 /// final uma nova revisão do objeto Info, com xref e trailer próprios (`/Prev`).
 /// Só atua em arquivos com xref clássica (o que o Quartz grava); nos demais

@@ -1,6 +1,6 @@
 import CoreGraphics
 
-/// Altura-x medida na tinta. PLAN.md §5.5.
+/// Altura-x medida na tinta.
 enum XHeight {
     /// Posições contínuas (em linhas de pixel, a partir do topo do perfil) da
     /// linha média e da linha de base.

@@ -39,7 +39,7 @@ import MiniGeometry
         #expect(ladder.map(\.pointSize) == ladder.map(\.pointSize).sorted())
         let marks = ladder.filter { e in ["mínimo", "alvo", "máximo"].contains { e.label.contains($0) } }
         #expect(marks.count == 3)
-        // Mínimo = 1,25 mm de altura-x → 7,5 pt equivalentes (PLAN.md §2).
+        // Mínimo = 1,25 mm de altura-x → 7,5 pt equivalentes.
         #expect(ladder.contains { $0.pointSize == 7.5 && $0.label.hasPrefix("7,5 pt — mínimo") })
         // Perfil "letra grande" move os marcos.
         let large = CalibrationPDF.ladder(.largePrint)

@@ -4,7 +4,7 @@ import MiniGeometry
 import QPDFKit
 
 /// S5 — gerador para medir no iPad o tempo de render de páginas com muitas colocações
-/// com clip (PLAN.md §17 M0, risco R2: granularidade do reflow vetorial).
+/// com clip (risco R2: granularidade do reflow vetorial).
 ///
 /// Para N ∈ {2, 10, 50, 300}, um PDF de 10 páginas no tamanho de tela cheia do mini em
 /// retrato. Cada página de saída mostra uma página A4 de texto inteira, montada por N
@@ -56,6 +56,6 @@ enum S5 {
             let bytes = (try? FileManager.default.attributesOfItem(atPath: out.path)[.size] as? Int) ?? 0
             print("\(out.lastPathComponent): \(pages) páginas × \(n) colocações (\(rows)×\(cols)), \(bytes) bytes")
         }
-        print("Abrir cada arquivo no iPad mini e medir o tempo de render por página (§16: ≤ 150 ms).")
+        print("Abrir cada arquivo no iPad mini e medir o tempo de render por página (≤ 150 ms).")
     }
 }

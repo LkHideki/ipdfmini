@@ -40,7 +40,7 @@ enum Scratch {
 }
 
 /// Corpus gravado pela própria CLI, fora deste processo: gerar PDFs com CoreText em
-/// paralelo com os outros testes já travou o processo (SPIKES.md, S3).
+/// paralelo com os outros testes já travou o processo.
 actor CorpusFiles {
     static let shared = CorpusFiles()
     private var task: Task<URL, Error>?

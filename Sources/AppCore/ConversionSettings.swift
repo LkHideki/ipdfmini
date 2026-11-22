@@ -67,7 +67,7 @@ public struct ConversionSettings: Codable, Sendable, Equatable {
     public var rotatedProfileID: String? { ViewportProfile.named(profile.rotated.id)?.id }
 }
 
-/// Replanejamento em processo a partir da análise decodificada (§16: alvo ≤ 100 ms).
+/// Replanejamento em processo a partir da análise decodificada (alvo ≤ 100 ms).
 public enum Replanner {
     public struct Outcome: Sendable {
         public var result: PlanResult

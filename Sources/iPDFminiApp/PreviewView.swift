@@ -167,7 +167,7 @@ struct PreviewView: View {
         }
     }
 
-    /// pt/mm do monitor da janela, via `CGDisplayScreenSize` (§12.1).
+    /// pt/mm do monitor da janela, via `CGDisplayScreenSize`.
     @MainActor static func screenPointsPerMM() -> CGFloat? {
         guard let screen = NSApp.keyWindow?.screen ?? NSApp.mainWindow?.screen ?? NSScreen.main,
               let n = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else { return nil }

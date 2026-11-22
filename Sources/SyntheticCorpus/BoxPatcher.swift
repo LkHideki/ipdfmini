@@ -5,8 +5,8 @@ import Foundation
 ///
 /// Nem o CGContext de PDF nem o `PDFPage.setBounds` do PDFKit produzem uma MediaBox com origem
 /// diferente de (0,0): ao serializar, ambos normalizam a origem para zero e deslocam as outras
-/// caixas (verificado com PDFKit do macOS 26). Como o corpus precisa de origem não nula (PLAN.md
-/// §5.1), as caixas são reescritas nos objetos de página por um trailer incremental: os bytes
+/// caixas (verificado com PDFKit do macOS 26). Como o corpus precisa de origem não nula,
+/// as caixas são reescritas nos objetos de página por um trailer incremental: os bytes
 /// originais não mudam e o arquivo continua válido (xref clássica + /Prev).
 /// Caixas que o PDFKit inventa (TrimBox/BleedBox/ArtBox iguais à CropBox) também são removidas,
 /// para que o arquivo contenha só o que a verdade declara.

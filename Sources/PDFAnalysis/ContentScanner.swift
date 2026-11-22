@@ -1,8 +1,8 @@
 import CoreGraphics
 
 /// O que o content stream revela sem renderizar: onde há imagens e se há
-/// texto visível. Usado para separar scan de página digital (§5.2) e no
-/// refino da caixa de tinta (§5.3).
+/// texto visível. Usado para separar scan de página digital e no
+/// refino da caixa de tinta.
 struct ContentSummary: Sendable, Equatable {
     /// Caixas (envoltórias) das imagens em espaço do usuário.
     var imageRects: [CGRect] = []

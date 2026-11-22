@@ -1,7 +1,7 @@
 import CoreGraphics
 import MiniGeometry
 
-// Tipos de dados da análise. PLAN.md §5 e §14.3.
+// Tipos de dados da análise.
 // Contrato entre PDFAnalysis (produz) e LayoutEngine/PDFWriting/MiniKit
 // (consomem). Só Foundation/CoreGraphics: nada de PDFKit aqui.
 // Todo retângulo está em espaço de página (ver `PageGeometry`).
@@ -52,7 +52,7 @@ public struct Line: Codable, Sendable, Equatable {
     }
 }
 
-/// Folha do XY-cut (PLAN.md §5.6). Contrato com o LayoutEngine (E3–E6):
+/// Folha do XY-cut. Contrato com o LayoutEngine (E3–E6):
 /// - `rect` colado à tinta, em espaço de página;
 /// - blocos de uma página são disjuntos e, juntos, cobrem toda a tinta da
 ///   página (fora das `ignoredRegion`): todo pixel de tinta está em exatamente um;

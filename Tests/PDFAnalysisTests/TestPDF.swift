@@ -100,7 +100,7 @@ enum Ink {
     ]
 
     /// CTFont criado uma vez por (nome, corpo), sob lock: criação concorrente
-    /// sem cache pode travar o CoreText (SPIKES.md, S3), e os testes rodam em paralelo.
+    /// sem cache pode travar o CoreText, e os testes rodam em paralelo.
     static func font(_ size: CGFloat, name: String = "Times New Roman") -> CTFont {
         fontCache.lock.lock()
         defer { fontCache.lock.unlock() }

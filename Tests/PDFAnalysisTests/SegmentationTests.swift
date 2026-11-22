@@ -6,7 +6,7 @@ import SyntheticCorpus
 import Testing
 @testable import PDFAnalysis
 
-// Segmentação (PLAN.md §5.6): contrato de `Block` provado pixel a pixel contra
+// Segmentação: contrato de `Block` provado pixel a pixel contra
 // a máscara recalculada pelo mesmo render da análise.
 
 private let letter = CGRect(x: 0, y: 0, width: 612, height: 792)
@@ -327,7 +327,7 @@ let plainScenarios: [Scenario] = [.book6x9, .a4Report, .latexArticleA4, .twoColu
     }
 
     /// Margem esquerda indecisa (três recuos alternados, 1/3 das linhas cada): sem
-    /// texto a calha seria rejeitada; a ordem do texto extraído desempata (§5.6).
+    /// texto a calha seria rejeitada; a ordem do texto extraído desempata.
     /// O caso linha a linha não se constrói assim: o PDFKit reordena por conta
     /// própria e devolve coluna a coluna mesmo com o conteúdo intercalado.
     @Test func textOrderBreaksTie() async throws {

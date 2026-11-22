@@ -20,7 +20,7 @@ public struct RemapStats: Codable, Sendable, Equatable {
     public init() {}
 }
 
-/// Links, sumário e anotações de marcação levados da origem à saída pelo `PlanMapping`. PLAN.md §9.2.
+/// Links, sumário e anotações de marcação levados da origem à saída pelo `PlanMapping`.
 ///
 /// Lidos pelo PDFKit (espaço do usuário sem rotação; caminhos de tinta e quadriláteros
 /// relativos à origem da anotação) e gravados pelo qpdf em sintaxe PDF (coordenadas

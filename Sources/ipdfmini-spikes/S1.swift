@@ -2,7 +2,7 @@ import Foundation
 import CoreGraphics
 import PDFKit
 
-/// S1 — Quartz como backend de colocações (PLAN.md §9.1, R1).
+/// S1 — Quartz como backend de colocações.
 enum S1 {
     struct Source {
         let name: String
@@ -100,7 +100,7 @@ enum S1 {
                  })
         md.para(allPass
                 ? "**S1 PASSA**: Quartz atende o critério (≤ 1,3× e texto selecionável com 3 fatias por página) em todos os casos medidos."
-                : "**S1 REPROVA** em pelo menos um caso: pelo critério do §9.1, qpdf é o padrão para o `PlacementWriter`.")
+                : "**S1 REPROVA** em pelo menos um caso: pelo critério de aceite, qpdf é o padrão para o `PlacementWriter`.")
 
         var summary = ["S1 " + (allPass ? "PASSA" : "REPROVA")]
         for r in k3 { summary.append("  S1 \(r.doc) / \(r.variant) k=3: \(fmt(r.ratio))× | texto ok \(r.selectableOK)/\(r.selectableTotal) | dup máx \(r.dupMax)") }

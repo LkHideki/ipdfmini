@@ -26,7 +26,7 @@ final class DocumentItem: Identifiable {
     private(set) var planError: String?
     /// Itens do sumário da origem; `nil` até a análise terminar.
     private(set) var sourceOutlineItems: Int?
-    /// Tempo do último replanejamento em processo (§16, alvo ≤ 100 ms).
+    /// Tempo do último replanejamento em processo (alvo ≤ 100 ms).
     private(set) var replanMillis: Double?
     /// Página de saída exibida (o modo "Origem" mostra a página de origem dela).
     var currentPage = 0
@@ -55,7 +55,7 @@ final class DocumentItem: Identifiable {
 
     /// Resultado do processo filho: análise decodificada + plano inicial.
     func load(_ report: FullPlanReport, analyzedWith used: ConversionSettings) {
-        // Só abre em processo depois que o filho leu o arquivo sem cair (§14.2).
+        // Só abre em processo depois que o filho leu o arquivo sem cair.
         guard let doc = PDFDocument(url: url) else {
             status = .failed("o PDFKit não abriu o arquivo para a pré-visualização")
             return

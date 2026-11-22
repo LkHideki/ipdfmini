@@ -4,7 +4,7 @@ import CoreText
 import PDFKit
 import AppKit
 
-/// S3 — Fonte da altura-x em PDF digital (PLAN.md §5.5).
+/// S3 — Fonte da altura-x em PDF digital.
 enum S3 {
     struct FontCase { let name: String; let tag: String }
 
@@ -236,7 +236,7 @@ enum S3 {
             apiOK
                 ? "Altura-x de PDF digital **por API**: tamanho e fonte do `attributedString` estão corretos nas \(attrRows.count) linhas; corpo × `xHeight` da fonte reproduz a tinta do \"x\" com erro máx. \(fmt(derivedMax, 3)) pt. Ressalva: depende de a fonte do atributo ser resolvida pelo nome."
                 : "Altura-x por API **não é confiável** nestes dados (tamanho \(sizeOK)/\(attrRows.count), nome \(nameOK)/\(attrRows.count), erro máx. \(fmt(derivedMax, 3)) pt): medir na tinta.",
-            "Fontes embutidas sem nome resolvível (subconjunto sem a fonte no sistema, Type 3) não foram testadas aqui; o fallback é medir a tinta, como no §5.5.",
+            "Fontes embutidas sem nome resolvível (subconjunto sem a fonte no sistema, Type 3) não foram testadas aqui; o fallback é medir a tinta.",
         ])
 
         var summary = ["S3 characterBounds ≈ \(best.0): erro médio vs tinta \(fmt(inkStat.mean, 3)) pt (máx \(fmt(inkStat.maxEdge, 3))), vs tipográfica \(fmt(typoStat.mean, 3)) pt (máx \(fmt(typoStat.maxEdge, 3)))"]

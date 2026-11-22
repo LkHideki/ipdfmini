@@ -2,7 +2,7 @@
 # Monta, assina (ad hoc) e instala o iPDFmini.app em ~/Applications.
 #
 # Sem Xcode: o app é o executável SwiftUI do SwiftPM empacotado à mão. A CLI vai
-# em Contents/Helpers e é o processo filho que analisa e converte (PLAN.md §14.2).
+# em Contents/Helpers e é o processo filho que analisa e converte.
 # O ícone é gerado do zero por scripts/make-icon.swift a cada build.
 #
 # Uso: scripts/build-app.sh [--no-install]

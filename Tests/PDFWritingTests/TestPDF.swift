@@ -143,7 +143,7 @@ enum TestPDF {
         return ctx?.makeImage()
     }
 
-    /// CTFontCreateWithName concorrente trava no XPC do registro de fontes (SPIKES.md S3);
+    /// CTFontCreateWithName concorrente trava no XPC do registro de fontes;
     /// os testes rodam em paralelo, então a fonte é criada uma vez, sob lock.
     private static let fontLock = NSLock()
     nonisolated(unsafe) private static var cachedFont: CTFont?

@@ -1,6 +1,6 @@
 import Foundation
 
-/// Nomes de saída do lote: "{título} — mini.pdf" (§13), sem sobrescrever nada.
+/// Nomes de saída do lote: "{título} — mini.pdf", sem sobrescrever nada.
 ///
 /// Reserva os nomes já dados no mesmo lote: dois documentos com o mesmo título
 /// rodam em paralelo e nenhum dos dois arquivos existe ainda quando o nome é escolhido.

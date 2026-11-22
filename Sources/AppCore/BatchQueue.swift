@@ -120,7 +120,7 @@ public struct BatchQueue: Sendable, Equatable {
     }
 }
 
-/// Ajustes por documento sobre um padrão do lote (§12.4, "receitas reaplicáveis").
+/// Ajustes por documento sobre um padrão do lote ("receitas reaplicáveis").
 ///
 /// Mexer no inspetor de um documento grava um ajuste próprio dele; quem não tem
 /// ajuste usa o padrão. "Usar como padrão" promove os ajustes de um documento.

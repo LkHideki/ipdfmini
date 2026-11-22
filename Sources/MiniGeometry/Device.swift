@@ -1,6 +1,6 @@
 import CoreGraphics
 
-/// Constantes físicas do iPad mini 7 (A17 Pro). PLAN.md §1.
+/// Constantes físicas do iPad mini 7 (A17 Pro).
 ///
 /// Tudo no app deriva daqui: a área ativa da tela expressa em pontos PDF
 /// (1/72 in) é o tamanho de página que aparece em escala física 1:1.
@@ -22,7 +22,7 @@ public enum Orientation: String, Codable, Sendable, CaseIterable {
     case portrait, landscape
 }
 
-/// Tamanhos canônicos de página de saída. PLAN.md §1, consequência 1.
+/// Tamanhos canônicos de página de saída.
 public enum MiniPage {
     public static let fullPortrait = CGSize(width: 328.64, height: 500.47)
     public static let fullLandscape = CGSize(width: 500.47, height: 328.64)

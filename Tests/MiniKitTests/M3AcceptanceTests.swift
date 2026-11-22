@@ -7,7 +7,7 @@ import SyntheticCorpus
 import Testing
 @testable import MiniKit
 
-// Aceite do M3 (PLAN.md §17) com a análise REAL (não a verdade do corpus): ordem de
+// Aceite do M3 com a análise REAL (não a verdade do corpus): ordem de
 // leitura correta em ≥ 95% das páginas, nenhuma linha partida, corpo ≥ 9,5 pt
 // equivalente, arquivo ≤ 1,3× a origem, todos os invariantes.
 

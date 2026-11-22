@@ -5,7 +5,7 @@ import MiniGeometry
 import PDFAnalysis
 import PDFKit
 
-/// Desenho da pré-visualização direto do plano, sem gravar arquivo (§13).
+/// Desenho da pré-visualização direto do plano, sem gravar arquivo.
 ///
 /// PDFDocument não é seguro entre threads: quem chama usa uma instância por
 /// thread (o app desenha tudo no MainActor). O PDF só é aberto em processo

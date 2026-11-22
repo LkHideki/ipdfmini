@@ -1,4 +1,4 @@
-// Spikes do M0 (PLAN.md §17): S1 Quartz, S2 PDFKit com caixas, S3 altura-x, S6 OCR, S7 WebKit.
+// Spikes do M0: S1 Quartz, S2 PDFKit com caixas, S3 altura-x, S6 OCR, S7 WebKit.
 // Uso: ipdfmini-spikes <s1|s2|s3|all|s6|s7> <arquivo-de-saída.md>
 // Os PDFs gerados ficam no mesmo diretório do markdown.
 import Foundation

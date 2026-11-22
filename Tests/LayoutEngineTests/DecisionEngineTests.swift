@@ -108,7 +108,7 @@ struct FakeStrategy: AdaptationStrategy {
         #expect(d.candidates.last?.strategy == .passthrough)
     }
 
-    /// A4 com margens de 1 in a 10 pt (§2.3: 7,2 pt sem respiro): nada atinge o mínimo,
+    /// A4 com margens de 1 in a 10 pt (7,2 pt sem respiro): nada atinge o mínimo,
     /// vence E1 em retrato e o plano leva o aviso, uma vez só.
     @Test func realStrategiesA4BelowMinimum() {
         let a4 = Fx.doc((0..<4).map { Fx.page($0, size: Fx.a4, ink: CGRect(x: 72, y: 72, width: 451, height: 698)) })

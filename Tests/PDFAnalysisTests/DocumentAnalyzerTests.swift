@@ -71,7 +71,7 @@ private func ignoredReasons(_ p: PageAnalysis) -> [String] {
     #expect(abs(ink.minX - truth.minX) <= 1 && abs(ink.maxY - truth.maxY) <= 1)
 }
 
-// MARK: geometria (§5.1)
+// MARK: geometria
 
 @Test(arguments: [0, 90, 180, 270])
 func rotatedPagesWithOffsetBox(rotation: Int) async throws {
@@ -163,7 +163,7 @@ private func printerPage(marks: Bool, truth: inout CGRect) -> PageSpec {
     expectRect(p.inkBox, truth)
 }
 
-// MARK: elementos que enganam (§5.4)
+// MARK: elementos que enganam
 
 @Test func arXivStampExcludedOnlyOnFirstPage() async throws {
     var body = [CGRect](repeating: .null, count: 2)
@@ -256,7 +256,7 @@ private func printerPage(marks: Bool, truth: inout CGRect) -> PageSpec {
     for p in doc.pages { #expect(!p.blocks.contains { $0.type == .headerFooter }, "página \(p.index)") }
 }
 
-// MARK: métricas de texto (§5.5)
+// MARK: métricas de texto
 
 @Test(arguments: [8.0, 10.0, 12.0, 14.0] as [CGFloat])
 func bodyXHeightWithinFivePercent(size: CGFloat) async throws {
@@ -285,7 +285,7 @@ func bodyXHeightWithinFivePercent(size: CGFloat) async throws {
     #expect(abs(line.baseline - 720) <= 0.5)
 }
 
-// MARK: classificação (§5.2)
+// MARK: classificação
 
 @Test func scannedPageIsScanWithReasonableInkBox() async throws {
     let media = CGRect(x: 0, y: 0, width: 420, height: 595)
@@ -403,7 +403,7 @@ extension SerialAnalysisTests {
         }
         let perPage = best / Double(n)
         print("PDFAnalysis: \(String(format: "%.1f", perPage)) ms por página digital A4 (serial, \(n) páginas)")
-        // teto folgado para build de debug; o orçamento do §16 é 40 ms em release
+        // teto folgado para build de debug; o orçamento é 40 ms em release
         #expect(perPage < 150)
     }
 }

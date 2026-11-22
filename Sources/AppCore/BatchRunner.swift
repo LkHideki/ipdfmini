@@ -65,7 +65,7 @@ public enum BatchEvent: Sendable, Equatable {
     case finished(String, BatchOutcome)
 }
 
-/// Fila do lote (§12.4): no máximo `maxConcurrent` processos filhos ao mesmo tempo.
+/// Fila do lote: no máximo `maxConcurrent` processos filhos ao mesmo tempo.
 ///
 /// Cancelar a tarefa que chama `run` cancela as filhas; o `HelperProcess` mata os
 /// processos em andamento (SIGTERM, depois SIGKILL) e os que não começaram saem

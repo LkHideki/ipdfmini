@@ -10,7 +10,7 @@ struct IPDFMiniApp: App {
     private let view = ViewState.shared
 
     var body: some Scene {
-        // Janela única (§13): a fila mora na lateral, não em janelas por documento.
+        // Janela única: a fila mora na lateral, não em janelas por documento.
         Window("iPDFmini", id: "main") {
             ContentView()
                 .environment(library)

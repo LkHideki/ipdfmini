@@ -4,7 +4,7 @@ import Testing
 import MiniGeometry
 @testable import SyntheticCorpus
 
-/// Forma específica de cada cenário: o que o PLAN.md §15.1 pede que a verdade garanta.
+/// Forma específica de cada cenário: o que a verdade de referência precisa garantir.
 @Suite struct ScenarioShapeTests {
     private func pages(_ s: Scenario) -> [PageTruth] { Fixtures.doc(s).truth.pages }
 

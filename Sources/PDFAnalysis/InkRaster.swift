@@ -6,7 +6,7 @@ import PDFKit
 // Passadas por pixel vão por vImage/vDSP: além de rápidas em release, laço
 // escalar em build de debug custa ~100 ns/pixel (2 M pixels por página A4).
 
-/// Raster cinza 8 bits da área visível, em espaço de página. PLAN.md §5.3.
+/// Raster cinza 8 bits da área visível, em espaço de página.
 /// Público para a validação (MiniKit) medir tinta com o mesmo render da análise.
 public struct GrayRaster {
     public let mapping: RasterMapping
@@ -94,7 +94,7 @@ public struct InkMask {
         return InkMask(width: r.width, height: r.height, values: r.lookup(lut), background: bg)
     }
 
-    /// Scan: Otsu global. M4 troca por Sauvola (papel não uniforme, §5.3 passo 2).
+    /// Scan: Otsu global. M4 troca por Sauvola (papel não uniforme).
     public static func scan(_ r: GrayRaster, histogram: [Int], background bg: Int, minContrast: Int = 40) -> InkMask {
         let t = otsu(histogram)
         // contraste mínimo: página de papel limpo não vira "tinta" pelo Otsu

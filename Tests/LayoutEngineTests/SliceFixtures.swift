@@ -164,7 +164,7 @@ func overlaps(_ a: CGRect, _ b: CGRect, eps: CGFloat = 1e-6) -> Bool {
     return !i.isNull && i.width > eps && i.height > eps
 }
 
-/// Invariantes de um plano fatiado (§15.2/§15.3). `allowOverlap`: aceita blocos
+/// Invariantes de um plano fatiado. `allowOverlap`: aceita blocos
 /// atômicos repetidos em fatias com marca de continuidade.
 func checkSlicePlan(_ doc: DocumentAnalysis, _ plan: LayoutPlan, allowOverlap: Bool = false,
                     sourceLocation: SourceLocation = #_sourceLocation) {

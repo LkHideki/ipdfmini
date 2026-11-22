@@ -5,7 +5,7 @@ import LayoutEngine
 /// Operadores PDF das sobreposições e das máscaras, no espaço da página de saída.
 ///
 /// Texto em Helvetica padrão (não embutida, `/IPMHelv` da C API) com larguras da
-/// AFM: medir com CoreText exigiria criar CTFont, que trava em paralelo (SPIKES.md S3).
+/// AFM: medir com CoreText exigiria criar CTFont, que trava em paralelo.
 enum OverlayContent {
     static let indicatorGray: CGFloat = 0.45
     static let trackGray: CGFloat = 0.85
@@ -47,7 +47,7 @@ enum OverlayContent {
             return s + " Q\n"
         case let .continuityMark(y):
             guard y.isFinite else { return "" }
-            // Fora dos quadrados de canto (§15.2.8); tracejado para não parecer conteúdo.
+            // Fora dos quadrados de canto; tracejado para não parecer conteúdo.
             let x0 = min(cornerRadius, page.width / 2), x1 = max(page.width - cornerRadius, page.width / 2)
             return "q \(n(markGray)) G \(n(markWidth)) w [2 2] 0 d \(n(x0)) \(n(y)) m \(n(x1)) \(n(y)) l S Q\n"
         }

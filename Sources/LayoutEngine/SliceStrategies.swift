@@ -2,7 +2,7 @@ import CoreGraphics
 import MiniGeometry
 import PDFAnalysis
 
-// E3, E4 e E5. PLAN.md §7.
+// E3, E4 e E5.
 
 /// E3 — fatias em paisagem: a largura da mancha ocupa o lado maior.
 /// Só se aplica a perfil paisagem; com perfil retrato a estimativa se declara
@@ -69,7 +69,7 @@ enum SlicePlanner {
         return CGFloat(Legibility.xHeightPt(fromMM: recipe.legibility.targetMM)) / x * (1 + 1e-9)
     }
 
-    /// Escala que põe o corpo no máximo da §2.2 (1,90 mm): acima disso a página
+    /// Escala que põe o corpo no máximo legível (1,90 mm de altura-x): acima disso a página
     /// vira mais telas sem ganho de leitura. Sem isso o E3 de um livro 6×9 saía a
     /// 14 pt em 2,6 telas e o auto o preferia ao recorte.
     static func maximumScale(_ doc: DocumentAnalysis, _ recipe: Recipe) -> CGFloat {
@@ -287,7 +287,7 @@ enum SlicePlanner {
         let r = run(id, doc, p, recipe)
         let est = estimate(id, doc, p, recipe, run: r)
         var warnings = r.result.warnings
-        // §15.2.2: pior trecho do corpo, não só a mediana (seção reduzida, exceção).
+        // pior trecho do corpo, não só a mediana (seção reduzida, exceção).
         var worst = est.bodyXHeightMM
         if let body = EstimateMath.bodyXHeightPt(doc) {
             // Texto do tamanho do corpo fora do fluxo principal (resumo largo no E5) também avisa.

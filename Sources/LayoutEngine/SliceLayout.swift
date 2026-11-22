@@ -115,7 +115,7 @@ struct SliceResult: Sendable {
 
 enum SliceLayoutEngine {
     /// Unidade alta demais reduzida abaixo desta fração da escala do segmento:
-    /// bloco atômico passa a ser fatiado com sobreposição (último recurso, §7).
+    /// bloco atômico passa a ser fatiado com sobreposição (último recurso).
     static let minReducedFraction: CGFloat = 0.5
     static let overlapFraction: CGFloat = 0.10
 

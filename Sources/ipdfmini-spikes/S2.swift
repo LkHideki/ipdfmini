@@ -4,7 +4,7 @@ import PDFKit
 import AppKit
 import MiniGeometry
 
-/// S2 — PDFKit com caixas (PLAN.md §6.4, §9.1, §9.3): alcance do `BoxWriter`.
+/// S2 — PDFKit com caixas: alcance do `BoxWriter`.
 enum S2 {
     // MARK: Inventário de um documento
 
@@ -447,7 +447,7 @@ enum S2 {
         let bImg = bRatios.filter { $0.0.hasPrefix("img") }
         let dupImg = bImg.contains { $0.2 > 1.3 }
         md.bullets([
-            "**Caso A (caminho do M1)**: 5 caixas por `setBounds` + `write(to:)` nos 4 cenários. Caixas gravadas exatamente como pedidas (CG e PDFKit, todas as páginas): \(allBoxesOK ? "SIM" : "NÃO"); valor cru presente e igual ao pedido: \(allRawOK ? "SIM" : "NÃO"); iguais ao pedido rebaseado pela origem da MediaBox: \(allRebasedOK ? "SIM" : "NÃO"). Texto da janela, links (com a mesma translação), anotações e sumário preservados: \(allCmpOK ? "SIM" : "NÃO, ver tabela"). Maior razão saída/origem: \(fmt(worstRatioA, 3))× (meta §9.3: ≤ 1,1× em vetor).",
+            "**Caso A (caminho do M1)**: 5 caixas por `setBounds` + `write(to:)` nos 4 cenários. Caixas gravadas exatamente como pedidas (CG e PDFKit, todas as páginas): \(allBoxesOK ? "SIM" : "NÃO"); valor cru presente e igual ao pedido: \(allRawOK ? "SIM" : "NÃO"); iguais ao pedido rebaseado pela origem da MediaBox: \(allRebasedOK ? "SIM" : "NÃO"). Texto da janela, links (com a mesma translação), anotações e sumário preservados: \(allCmpOK ? "SIM" : "NÃO, ver tabela"). Maior razão saída/origem: \(fmt(worstRatioA, 3))× (meta: ≤ 1,1× em vetor).",
             "**Origem da MediaBox**: o PDFKit grava a MediaBox sempre com origem (0,0) e translada junto as demais caixas, o conteúdo e as anotações (ver cenários A2/A3 e a tabela de preservação). O resultado visual confere (texto da janela e links com a mesma translação); por isso \"pedido\" ≠ \"gravado\" nas coordenadas, mas \"pedido rebaseado\" = gravado: \(allRebasedOK ? "SIM em todos os cenários" : "NÃO em algum cenário").",
             "**TrimBox/BleedBox/ArtBox**: nos cenários em que valem o mesmo que a CropBox/MediaBox (A1–A3) a chave não é gravada (\"cru\" ausente; leitores caem no padrão = CropBox); quando diferem (A4) são gravadas com o valor pedido.",
             "**Content stream**: não é preservado byte a byte. p.1 de nav10 decodificada: origem \(contentLens["origem"] ?? 0) B; A1 \(contentLens["A1"] ?? 0) B (só o retângulo do clip inicial muda para o tamanho da nova MediaBox); A2 \(contentLens["A2"] ?? 0) B e A3 \(contentLens["A3"] ?? 0) B (origem da MediaBox ≠ 0: o PDFKit envolve o conteúdo em `q 1 0 0 1 dx dy cm`); A4 \(contentLens["A4"] ?? 0) B (MediaBox intacta: idêntico). Só medido com PDFs gerados pelo Quartz; outros produtores não testados.",

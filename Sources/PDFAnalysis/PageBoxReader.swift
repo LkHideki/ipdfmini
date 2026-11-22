@@ -1,7 +1,7 @@
 import CoreGraphics
 import MiniGeometry
 
-/// Leitura das caixas de página. PLAN.md §5.1.
+/// Leitura das caixas de página.
 enum PageBoxReader {
     /// Caixas em espaço do usuário e `/Rotate` normalizado.
     static func read(_ page: CGPDFPage) -> (boxes: PageBoxes, rotation: Int) {

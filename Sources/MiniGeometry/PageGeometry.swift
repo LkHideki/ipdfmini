@@ -1,6 +1,6 @@
 import CoreGraphics
 
-/// Conversões de coordenadas, num único lugar. PLAN.md §14.3.
+/// Conversões de coordenadas, num único lugar.
 ///
 /// Convenção do projeto — **espaço de página** (page space):
 /// - coordenadas PDF (y para cima) já com `/Rotate` aplicado;

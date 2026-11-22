@@ -1,7 +1,7 @@
 import Foundation
 import CoreGraphics
 
-/// Modelo de legibilidade. PLAN.md §2.
+/// Modelo de legibilidade.
 ///
 /// A grandeza medida é a altura-x física em milímetros no vidro. "pt
 /// equivalente" é só para a interface: altura-x / 0,47.

@@ -75,7 +75,7 @@ public struct AnalysisSummary: Codable, Sendable, Equatable {
     }
 }
 
-/// Um candidato da tabela do §8.
+/// Um candidato da tabela de decisão.
 public struct CandidateSummary: Codable, Sendable, Equatable {
     public var strategy: StrategyID
     public var profileID: String
@@ -108,7 +108,7 @@ public struct CandidateSummary: Codable, Sendable, Equatable {
         risks = e.risks
     }
 
-    /// "Recorte · retrato: 9,4 pt, 1 tela" (§8); a orientação separa o perfil do girado.
+    /// "Recorte · retrato: 9,4 pt, 1 tela"; a orientação separa o perfil do girado.
     public var line: String {
         let body = bodyPointSizeEquivalent.map { "\(Describe.number($0)) pt" } ?? "? pt"
         let screens = Describe.number(screensPerSourcePage)
@@ -119,7 +119,7 @@ public struct CandidateSummary: Codable, Sendable, Equatable {
 
 public struct PlanResult: Sendable, Equatable {
     public var analysis: DocumentAnalysis
-    /// Na ordem da regra do §8.
+    /// Na ordem da regra de decisão.
     public var candidates: [CandidateSummary]
     public var chosenIndex: Int
     public var mode: ConversionMode
@@ -173,7 +173,7 @@ public struct ConversionReport: Codable, Sendable, Equatable {
 // MARK: - Textos
 
 public extension StrategyID {
-    /// Nome curto usado na tabela de candidatos (§8).
+    /// Nome curto usado na tabela de candidatos.
     var displayName: String {
         switch self {
         case .passthrough: "Passagem direta"
@@ -189,7 +189,7 @@ public extension StrategyID {
 }
 
 public enum Describe {
-    /// Uma casa decimal, vírgula, sem ",0" (o padrão da tabela do §8).
+    /// Uma casa decimal, vírgula, sem ",0" (o padrão da tabela de candidatos).
     public static func number(_ x: Double, decimals: Int = 1) -> String {
         guard x.isFinite else { return "—" }
         var s = String(format: "%.\(decimals)f", x)

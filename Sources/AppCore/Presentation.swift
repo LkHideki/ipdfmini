@@ -8,7 +8,7 @@ import PDFAnalysis
 // Textos e mapeamentos da interface, fora do SwiftUI para serem testáveis.
 
 public enum ExportNaming {
-    /// "{título} — mini.pdf" (§13). Título do PDF quando presta; senão o nome do arquivo.
+    /// "{título} — mini.pdf". Título do PDF quando presta; senão o nome do arquivo.
     public static func defaultFileName(title: String?, sourceURL: URL) -> String {
         let stem = sourceURL.deletingPathExtension().lastPathComponent
         var base = cleanTitle(title) ?? stem
@@ -176,7 +176,7 @@ public enum Labels {
         }
     }
 
-    /// "Recorte · retrato: 9,4 pt, 1 tela" (§8), com o nome de modo da interface. A
+    /// "Recorte · retrato: 9,4 pt, 1 tela", com o nome de modo da interface. A
     /// orientação distingue a mesma estratégia no perfil escolhido e no girado.
     public static func candidate(_ c: CandidateSummary) -> String {
         let body = c.bodyPointSizeEquivalent.map { "\(Describe.number($0)) pt" } ?? "? pt"
@@ -233,7 +233,7 @@ public enum DocumentStatus: Sendable, Equatable {
     }
 }
 
-/// Textos do sumário no inspetor (§9.2).
+/// Textos do sumário no inspetor.
 public enum OutlineDisplay {
     /// "Sumário: 9 itens", "sem sumário na origem"; `nil` enquanto não se sabe.
     public static func source(_ count: Int?) -> String? {

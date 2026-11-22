@@ -1,9 +1,9 @@
 import CoreGraphics
 import MiniGeometry
 
-/// Pré-visualização em tamanho real (§12.1): pontos de tela por milímetro do monitor.
+/// Pré-visualização em tamanho real: pontos de tela por milímetro do monitor.
 public enum PhysicalScale {
-    /// Corpo e tela do iPad mini 7 em retrato (mm). PLAN.md §1.
+    /// Corpo e tela do iPad mini 7 em retrato (mm).
     public static let bodyMM = CGSize(width: 134.8, height: 195.4)
     public static let screenMM = MiniDevice.activeAreaMM
     /// Raio dos cantos do corpo. *Hipótese* visual (não há cota publicada); só desenha a moldura.

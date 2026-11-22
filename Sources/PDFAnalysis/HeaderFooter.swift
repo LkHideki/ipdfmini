@@ -1,7 +1,7 @@
 import CoreGraphics
 import Foundation
 
-/// Cabeçalho/rodapé repetido e número de página. PLAN.md §5.4.
+/// Cabeçalho/rodapé repetido e número de página.
 /// Só reclassifica blocos da segmentação como `.headerFooter`; a caixa de
 /// tinta continua com eles (remover é a estratégia E2).
 enum HeaderFooter {

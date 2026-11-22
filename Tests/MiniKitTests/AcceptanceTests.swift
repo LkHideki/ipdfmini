@@ -8,7 +8,7 @@ import SyntheticCorpus
 import Testing
 @testable import MiniKit
 
-// Aceite do M1 (PLAN.md §17) ponta a ponta sobre o corpus sintético: padrão 1 página → 1
+// Aceite do M1 ponta a ponta sobre o corpus sintético: padrão 1 página → 1
 // página (E0–E2) e, com a divisão permitida, o auto do M3 (E0–E5).
 
 @Suite struct AcceptanceTests {
@@ -69,7 +69,7 @@ import Testing
         #expect(c.report.write.outputPageCount == c.report.plan.pages.count)
     }
 
-    /// §17: corpo ≥ 9 pt equivalente em ≥ 90% dos livros 6×9, com a remoção de
+    /// corpo ≥ 9 pt equivalente em ≥ 90% dos livros 6×9, com a remoção de
     /// cabeçalho/rodapé permitida (o E1 não chega lá: cabeçalho e fólio entram na mancha).
     @Test func bookCorpusBodyAtLeast9pt() async throws {
         var rows: [String] = []
@@ -88,7 +88,7 @@ import Testing
         #expect(fraction >= 0.9, "corpo ≥ 9 pt em \(ok) de \(bookScenarios.count) livros: \(rows.joined(separator: " · "))")
     }
 
-    /// Opção desligada (padrão, §18 R5): E2 nem é candidato, o auto não o escolhe e
+    /// Opção desligada (padrão): E2 nem é candidato, o auto não o escolhe e
     /// todo bloco de cabeçalho/rodapé continua inteiro dentro de alguma colocação
     /// (no M1 o auto era sempre E1; com E3–E5 candidatos, a garantia vale para todos).
     @Test(arguments: Scenario.allCases, [false, true])
@@ -128,7 +128,7 @@ import Testing
         #expect(removed > 0, "\(s): nenhum cabeçalho/rodapé removido")
     }
 
-    /// §17: sumário e links intactos, no padrão 1 → 1 (BoxWriter) e com a divisão (PlacementWriter).
+    /// sumário e links intactos, no padrão 1 → 1 (BoxWriter) e com a divisão (PlacementWriter).
     @Test(arguments: [false, true])
     func navigationIntact(split: Bool) async throws {
         let c = try await ConversionCache.shared.converted(.navigation, split: split)
@@ -169,8 +169,8 @@ import Testing
         #expect(pages == [1, 1, 2, 3, 4, 5])
     }
 
-    /// §17: variação de escala entre páginas da mesma classe = 0, fora as exceções declaradas.
-    /// Vale para E0–E4 (escala travada por classe); E5 tem, por desenho (§7), escala da
+    /// variação de escala entre páginas da mesma classe = 0, fora as exceções declaradas.
+    /// Vale para E0–E4 (escala travada por classe); E5 tem, por desenho, escala da
     /// coluna no documento todo e escala própria para cada bloco de largura total.
     /// `options`: (remoção de cabeçalho/rodapé, divisão permitida).
     @Test(arguments: Scenario.allCases, [(false, false), (true, false), (false, true), (true, true)])

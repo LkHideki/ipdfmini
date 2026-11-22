@@ -4,7 +4,7 @@ import WebKit
 import PDFKit
 import CoreGraphics
 
-// S7 — WebKit pagina EPUB/HTML na página do mini com hifenização? (PLAN.md §11, §17).
+// S7 — WebKit pagina EPUB/HTML na página do mini com hifenização?
 // Roda no main actor com o RunLoop principal girando; sem app bundle.
 
 // MARK: - Modelo do capítulo

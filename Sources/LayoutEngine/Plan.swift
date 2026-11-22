@@ -2,7 +2,7 @@ import CoreGraphics
 import MiniGeometry
 import PDFAnalysis
 
-// Plano de layout: artefato central do pipeline. PLAN.md §4.
+// Plano de layout: artefato central do pipeline.
 // Todas as estratégias produzem este tipo; um escritor só consome.
 
 public struct Placement: Codable, Sendable, Equatable {
@@ -74,15 +74,15 @@ public enum PageClassMode: String, Codable, Sendable {
     case bySize
 }
 
-/// Ajustes reaplicáveis de um documento. PLAN.md §12.4.
+/// Ajustes reaplicáveis de um documento.
 public struct Recipe: Codable, Sendable, Equatable {
     public var id: String
     public var strategy: StrategyID
     public var legibility: Legibility
-    /// Respiro em cada lado, em mm. PLAN.md §6.3.
+    /// Respiro em cada lado, em mm.
     public var marginMM: Double
     public var classMode: PageClassMode
-    /// Percentil usado para a mancha de referência da classe. PLAN.md §6.1.
+    /// Percentil usado para a mancha de referência da classe.
     public var referencePercentile: Double
     /// Escala máxima (não ampliar além disso).
     public var maxScale: CGFloat
@@ -121,7 +121,7 @@ public struct LayoutPlan: Codable, Sendable, Equatable {
     }
 }
 
-/// Estimativa barata de um candidato, sem gerar plano completo. PLAN.md §8.
+/// Estimativa barata de um candidato, sem gerar plano completo.
 public struct Estimate: Codable, Sendable, Equatable {
     public var strategy: StrategyID
     public var orientation: Orientation

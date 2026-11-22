@@ -350,7 +350,7 @@ private func words(_ s: String?) -> [String] {
         return (TestPDF.size(env.src), TestPDF.size(env.out), report)
     }
 
-    /// Página com peso realista (texto + imagem, ~18 kB): a meta da §9.3 vale.
+    /// Página com peso realista (texto + imagem, ~18 kB): a meta de tamanho de 1,1× vale.
     @Test func inPlaceOutputStaysWithinSizeBudget() async throws {
         let r = try await inPlaceRatio(noiseSide: 120, pages: 30)
         let ratio = Double(r.out) / Double(r.src)

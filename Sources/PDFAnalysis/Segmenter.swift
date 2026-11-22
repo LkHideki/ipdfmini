@@ -16,7 +16,7 @@ struct PixelBox: Equatable, Sendable {
     }
 }
 
-/// Linha tipográfica já medida (altura-x pelo método da §5.5), em espaço de
+/// Linha tipográfica já medida (altura-x medida nos glifos), em espaço de
 /// página do raster. A ordem do array é a do texto extraído.
 struct TextBox: Sendable {
     var rect: CGRect
@@ -27,7 +27,7 @@ struct TextBox: Sendable {
     var words: [CGRect]
 }
 
-/// XY-cut recursivo sobre a máscara de tinta. PLAN.md §5.6.
+/// XY-cut recursivo sobre a máscara de tinta.
 ///
 /// Garantia do contrato de `Block`: cada corte passa só por faixas sem nenhum
 /// pixel de tinta e cada nó é apertado à própria tinta; as folhas são, então,
@@ -44,9 +44,9 @@ struct Segmenter {
     let bodyXHeight: CGFloat?
 
     // Limiares (pt, salvo indicação)
-    /// Calha mínima entre colunas (§5.6).
+    /// Calha mínima entre colunas.
     static let gutterMinPt: CGFloat = 8
-    /// Calha flanqueada por tinta em ≥ 70% da altura do nó (§5.6): o lado mais
+    /// Calha flanqueada por tinta em ≥ 70% da altura do nó: o lado mais
     /// alto cobre ≥ 70%; o outro, ≥ 20% (coluna direita curta na última página).
     static let gutterExtent = 0.7
     static let gutterShortSide = 0.2
@@ -193,7 +193,7 @@ struct Segmenter {
         return (cuts, tableLike)
     }
 
-    /// Critérios de calha da §5.6; `table` = rejeitada com cara de tabela.
+    /// Critérios de calha; `table` = rejeitada com cara de tabela.
     private func judgeGutter(_ b: PixelBox, left l: PixelBox, right r: PixelBox, gap: (Int, Int),
                              narrowLimit: Double) -> (accept: Bool, table: Bool) {
         let h = Double(b.height)
@@ -267,7 +267,7 @@ struct Segmenter {
         var xh: CGFloat = 0
         // sem medida: base estimada como na linha tipográfica (22% acima da base da caixa)
         var baseline = r.minY + 0.22 * r.height
-        // altura-x do método da §5.5 (glifos; tinta como reserva), da linha tipográfica casada
+        // altura-x medida nos glifos (tinta como reserva), da linha tipográfica casada
         if let best = ids.first(where: { texts[$0].xHeight > 0 }) {
             xh = texts[best].xHeight
             baseline = texts[best].baseline
@@ -289,7 +289,7 @@ struct Segmenter {
         return LeafLine(box: t, xHeight: xh, baseline: baseline, words: words, texts: ids, density: density)
     }
 
-    /// Palavras pela distribuição bimodal dos vãos da linha (§7, E6): vãos entre
+    /// Palavras pela distribuição bimodal dos vãos da linha: vãos entre
     /// letras e entre palavras formam duas classes; separa-se pelo limiar de Otsu
     /// quando as médias diferem ≥ 1,8×, senão por 0,3 altura-x.
     private func inkWords(_ t: PixelBox, xHeightPx: CGFloat) -> [CGRect] {

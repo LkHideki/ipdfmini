@@ -2,7 +2,7 @@ import CoreGraphics
 import CoreText
 import Foundation
 
-// Cenários do M3 (PLAN.md §5.6, E3–E5): blocos, colunas, figuras e tabelas.
+// Cenários do M3: blocos, colunas, figuras e tabelas.
 // Ordem de leitura de referência = ordem em que os blocos são desenhados: largura total de
 // cima para baixo, intercalada nas posições certas; dentro de uma seção de 2 colunas, a
 // coluna esquerda inteira antes da direita; folio por último.

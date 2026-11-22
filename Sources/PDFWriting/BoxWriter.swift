@@ -5,7 +5,7 @@ import MiniGeometry
 import LayoutEngine
 import QPDFKit
 
-/// Escritor por caixas. PLAN.md §9.1 e §6.4.
+/// Escritor por caixas.
 ///
 /// Só altera as caixas das páginas; o content stream, o sumário, os links e as
 /// anotações ficam como estão. Aceita planos de 1 colocação por página de saída
@@ -19,7 +19,7 @@ public struct BoxWriter: PDFWriter {
         // Plano 1 → 1 (cada página no máximo uma vez, na ordem, como E0–E2): caixas gravadas
         // pelo qpdf. A gravação do PDFKit reescreve o arquivo inteiro sem object streams
         // (medido em livros O'Reilly: 1,29–1,40× só por abrir e gravar), acima do orçamento
-        // de 1,1× do §9.3; o qpdf mantém streams e estrutura e só troca as caixas.
+        // de 1,1×; o qpdf mantém streams e estrutura e só troca as caixas.
         let sources = plan.pages.map { $0.placements[0].sourcePage }
         if zip(sources, sources.dropFirst()).allSatisfy({ $0 < $1 }) {
             return try Self.writeInPlace(plan, source: source, to: url, options: options)
@@ -99,7 +99,7 @@ public struct BoxWriter: PDFWriter {
 
         Self.applyMetadata(to: doc, plan: plan, options: options)
 
-        // Saída sem senha (§9.2). Um `write(to:)` simples manteria a criptografia e a senha
+        // Saída sem senha. Um `write(to:)` simples manteria a criptografia e a senha
         // da origem; senhas vazias gravam um arquivo que abre sem pedir nada.
         let ok = doc.isEncrypted
             ? doc.write(to: url, withOptions: [.userPasswordOption: "", .ownerPasswordOption: ""])
@@ -244,7 +244,7 @@ public struct BoxWriter: PDFWriter {
 
     /// Na gravação o PDFKit leva a origem da MediaBox para (0,0) e translada
     /// conteúdo, caixas e retângulos de anotação, mas não os pontos de destino
-    /// (`/XYZ x y`) do sumário e dos links (SPIKES.md, S2; medido no corpus
+    /// (`/XYZ x y`) do sumário e dos links (medido no corpus
     /// `navigation`: destinos deslocados pela origem da janela). Aplica-se aqui a
     /// mesma translação da página de destino. Se uma versão futura do PDFKit
     /// passar a transladar, o invariante 5 da validação acusa o deslocamento em dobro.

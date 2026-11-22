@@ -6,7 +6,7 @@ import PDFAnalysis
 import PDFKit
 import PDFWriting
 
-// Invariantes 4, 5 e 7 para saídas do PlacementWriter (E3+). PLAN.md §15.2.
+// Invariantes 4, 5 e 7 para saídas do PlacementWriter (E3+).
 
 /// Multiconjunto de palavras.
 struct WordBag: Equatable, Sendable {
@@ -290,7 +290,7 @@ extension Validator {
                     for (o, r) in pieces { touched.insert([o, placementIndex(o, r) ?? -1]) }
                     for t in touched { wantAnnots[t[0], default: [:]][type, default: (0, 0)].1 += 1 }
                 default:
-                    // Formulário, carimbo, figuras: fora do escopo do PlacementWriter (§9.2).
+                    // Formulário, carimbo, figuras: fora do escopo do PlacementWriter.
                     unsupported += 1
                 }
             }

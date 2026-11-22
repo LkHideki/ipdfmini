@@ -7,7 +7,7 @@ import PDFAnalysis
 import PDFWriting
 import SyntheticCorpus
 
-// CLI do núcleo. PLAN.md §12.4.
+// CLI do núcleo.
 
 @main
 struct IPDFMini: AsyncParsableCommand {
@@ -157,12 +157,12 @@ struct Analyze: AsyncParsableCommand {
 }
 
 struct Plan: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(abstract: "Mostra os candidatos (§8) e o plano escolhido, sem gravar.")
+    static let configuration = CommandConfiguration(abstract: "Mostra os candidatos e o plano escolhido, sem gravar.")
 
     @Argument(help: "PDF de entrada.") var pdf: String
     @OptionGroup var conversion: ConversionArguments
     @Flag(help: "Imprime candidatos e plano em JSON.") var json = false
-    // App (§14.2): análise inteira no mesmo JSON, para replanejar sem reanalisar.
+    // App: análise inteira no mesmo JSON, para replanejar sem reanalisar.
     @Flag(help: "Com --json: inclui a análise completa (FullPlanReport).") var full = false
 
     func run() async throws {
@@ -206,7 +206,7 @@ struct Convert: AsyncParsableCommand {
 }
 
 struct Calibrate: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(abstract: "Gera o PDF de calibração (§3).")
+    static let configuration = CommandConfiguration(abstract: "Gera o PDF de calibração.")
 
     @Option(name: [.short, .customLong("output")], help: "PDF de saída.") var output: String
     @Option(help: "portrait ou landscape.") var orientation: Orientation = .portrait

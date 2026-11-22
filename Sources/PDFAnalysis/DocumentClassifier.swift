@@ -1,6 +1,6 @@
 import CoreGraphics
 
-/// Classe do documento, mínima para o M1. PLAN.md §5.2.
+/// Classe do documento, mínima para o M1.
 /// Só escolhe padrões; o usuário pode trocar. Quadrinhos, partitura,
 /// formulário e scan de página dupla ficam para depois.
 enum DocumentClassifier {
@@ -16,7 +16,7 @@ enum DocumentClassifier {
         if w / h >= 1.2 { return .slides }
 
         let texty = content.filter { $0.analysis.kind == .digitalText || $0.analysis.kind == .mixed }
-        // colunas reais do XY-cut (calha que passou nos critérios da §5.6)
+        // colunas reais do XY-cut (calha que passou nos critérios do segmentador)
         let twoCol = texty.filter { $0.columns >= 2 }.count
         if !texty.isEmpty && Double(twoCol) >= 0.5 * Double(texty.count) { return .twoColumnArticle }
 

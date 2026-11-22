@@ -4,7 +4,7 @@ import CoreText
 import PDFKit
 import Vision
 
-/// S6 — OCR para scans (PLAN.md §10, §5.6, §16): Vision (RecognizeTextRequest e
+/// S6 — OCR para scans: Vision (RecognizeTextRequest e
 /// RecognizeDocumentsRequest), `saveTextFromOCR` do PDFKit e camada de texto própria.
 enum S6 {
     // MARK: - Tipos
@@ -13,7 +13,7 @@ enum S6 {
     static let pageH: CGFloat = 841.92     // 3508 px a 300 dpi
     static let fonts = FontCache()
 
-    /// Cache de CTFont sob lock: criar CTFont concorrentemente trava o processo (SPIKES.md, S3).
+    /// Cache de CTFont sob lock: criar CTFont concorrentemente trava o processo.
     final class FontCache: @unchecked Sendable {
         private let lock = NSLock()
         private var cache: [String: CTFont] = [:]

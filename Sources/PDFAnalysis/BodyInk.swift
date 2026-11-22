@@ -41,7 +41,7 @@ struct InkRows: Sendable, Equatable {
     }
 }
 
-/// Caixa de tinta sem cabeçalho/rodapé. PLAN.md §7 (E2).
+/// Caixa de tinta sem cabeçalho/rodapé.
 ///
 /// Vem do raster, nunca das caixas tipográficas: uma figura acima da primeira
 /// linha de texto seria cortada. Exclui-se cada faixa contínua de linhas de

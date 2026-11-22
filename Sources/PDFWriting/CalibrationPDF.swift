@@ -3,7 +3,7 @@ import CoreGraphics
 import CoreText
 import MiniGeometry
 
-/// PDF de calibração de viewport. PLAN.md §3.
+/// PDF de calibração de viewport.
 ///
 /// Uma página em tela cheia com réguas nas quatro bordas. O número impresso
 /// ao lado de cada traço é a distância até a borda; o usuário abre o arquivo
@@ -68,7 +68,7 @@ public enum CalibrationPDF {
 
     private static let mmColor = CGColor(red: 0.0, green: 0.30, blue: 0.75, alpha: 1)
     private static let ptColor = CGColor(red: 0.80, green: 0.18, blue: 0.0, alpha: 1)
-    /// Times New Roman: altura-x ≈ 0,45 em, perto da razão 0,47 do modelo (§2). Georgia
+    /// Times New Roman: altura-x ≈ 0,45 em, perto da razão 0,47 do modelo. Georgia
     /// foi descartada: embutida, embaralha a extração de texto do PDFKit.
     private static let ladderFont = "Times New Roman"
     private static let inkColor = CGColor(gray: 0.05, alpha: 1)
@@ -232,7 +232,7 @@ public enum CalibrationPDF {
     }
 
     /// Uma criação por (nome, corpo), sob lock: CTFontCreateWithName concorrente
-    /// pode travar no XPC do registro de fontes (SPIKES.md S3), e o app/testes
+    /// pode travar no XPC do registro de fontes, e o app/testes
     /// podem gerar o PDF de calibração em paralelo.
     private static func cachedFont(_ name: String, _ size: CGFloat) -> CTFont {
         let key = "\(name)@\(size)"

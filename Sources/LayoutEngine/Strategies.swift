@@ -2,7 +2,7 @@ import CoreGraphics
 import MiniGeometry
 import PDFAnalysis
 
-// E0 e E1. PLAN.md §7.
+// E0 e E1.
 
 /// E0 — passagem direta: página inteira, expandida até a proporção do viewport.
 public struct PassthroughStrategy: AdaptationStrategy {
@@ -51,7 +51,7 @@ public struct PassthroughStrategy: AdaptationStrategy {
     }
 }
 
-/// E1 — recorte em retrato com escala travada por classe. PLAN.md §6.
+/// E1 — recorte em retrato com escala travada por classe.
 public struct CropStrategy: AdaptationStrategy {
     public var id: StrategyID { .crop }
     public init() {}
@@ -65,10 +65,10 @@ public struct CropStrategy: AdaptationStrategy {
     }
 }
 
-/// E2 — recorte agressivo: E1 sem cabeçalho, rodapé e número de página. PLAN.md §7.
+/// E2 — recorte agressivo: E1 sem cabeçalho, rodapé e número de página.
 ///
 /// Mesmo motor do E1 sobre `bodyInkBox ?? inkBox`; bloco removido nunca fica
-/// parcialmente dentro da janela (ver `CropFrame.avoiding`). O §7 pede o número
+/// parcialmente dentro da janela (ver `CropFrame.avoiding`). A estratégia pede o número
 /// da página original como overlay discreto, mas o BoxWriter não desenha
 /// overlays (`WriteWarning.overlaysIgnored`): não é emitido até o PlacementWriter (M3).
 public struct AggressiveCropStrategy: AdaptationStrategy {
@@ -162,13 +162,13 @@ enum EstimateMath {
                         fidelityCost: id.fidelityCost, risks: risks)
     }
 
-    /// Fecha o plano: receita com a estratégia usada e aviso de legibilidade (§15.2.2).
+    /// Fecha o plano: receita com a estratégia usada e aviso de legibilidade.
     static func finish(_ id: StrategyID, _ doc: DocumentAnalysis, _ profile: ViewportProfile, _ recipe: Recipe,
                        pages: [OutputPage], warnings: [PlanWarning], estimate: Estimate) -> LayoutPlan {
         var warnings = warnings
         // Pior página com tinta, não só a classe dominante: outra classe de tamanho
         // (prancha em paisagem, página girada) ou uma exceção pode ficar abaixo do
-        // mínimo com a dominante acima, e o §15.2.2 exige o aviso nesse caso.
+        // mínimo com a dominante acima, e a validação exige o aviso nesse caso.
         var worst = estimate.bodyXHeightMM
         if let body = bodyXHeightPt(doc) {
             for out in pages {

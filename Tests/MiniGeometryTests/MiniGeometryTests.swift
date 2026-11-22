@@ -11,7 +11,7 @@ import CoreGraphics
 }
 
 @Test func legibilityTableFromPlan() {
-    // PLAN.md §2.2: 7,5 pt ≈ 1,24 mm ≈ 0,20° a 35 cm; 10 pt ≈ 1,66 mm.
+    // 7,5 pt ≈ 1,24 mm ≈ 0,20° a 35 cm; 10 pt ≈ 1,66 mm.
     #expect(abs(Legibility.xHeightMM(forPointSize: 7.5) - 1.24) < 0.01)
     #expect(abs(Legibility.xHeightMM(forPointSize: 10) - 1.66) < 0.01)
     #expect(abs(Legibility.standard.visualAngleDegrees(xHeightMM: 1.24) - 0.20) < 0.01)
@@ -22,8 +22,8 @@ import CoreGraphics
     #expect(Legibility.standard.grade(xHeightMM: 2.0) == .tooLarge)
 }
 
-@Test func fitScaleTableFromPlan() {
-    // PLAN.md §2.3
+@Test func fitScaleReferenceTable() {
+    // Tabela de referência: escala e corpo por formato de página.
     let v = MiniPage.fullPortrait
     #expect(abs(Fit.scale(content: CGSize(width: 595, height: 842), into: v) - 0.552) < 0.001)
     #expect(abs(Fit.scale(content: CGSize(width: 324, height: 518), into: v) - 0.966) < 0.001)

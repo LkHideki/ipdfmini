@@ -81,7 +81,7 @@ extension Flow {
     /// Tabela de células soltas: cada célula é um retângulo, separadas por `gap` pt em x e y.
     /// A largura de cada coluna é a do texto mais largo + 8 pt de respiro: os vãos verticais
     /// (100% da altura da tabela, entre colunas e entre a borda e o texto) ficam todos abaixo
-    /// de 8 pt, o limiar de calha do PLAN.md §5.6. A tabela é centrada na região.
+    /// de 8 pt, o limiar de calha do segmentador. A tabela é centrada na região.
     func cellGrid(rows: Int, cols: Int, cellHeight: CGFloat, gap: CGFloat, source: TextSource) {
         let font = Face.times(8), bold = Face.timesBold(8)
         let texts: [[String]] = (0..<rows).map { r in

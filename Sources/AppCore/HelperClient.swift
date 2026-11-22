@@ -30,7 +30,7 @@ public enum HelperError: Error, Sendable, Equatable {
     }
 }
 
-/// Cliente da CLI embutida (Contents/Helpers/ipdfmini). Isolamento do §14.2: um
+/// Cliente da CLI embutida (Contents/Helpers/ipdfmini). Isolamento: um
 /// PDF que derruba o CoreGraphics derruba só o filho, e o documento vira falha.
 public struct HelperClient: Sendable {
     public var executable: URL

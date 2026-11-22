@@ -10,7 +10,7 @@ import Testing
 @testable import AppCore
 @testable import ipdfmini_cli
 
-// MARK: - Processo filho (isolamento do §14.2)
+// MARK: - Processo filho (isolamento)
 
 @Suite struct HelperIsolationTests {
     @Test func realHelperPlanDecodesAndMatchesInProcessReplan() async throws {

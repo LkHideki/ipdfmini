@@ -2,7 +2,7 @@ import CoreGraphics
 import MiniGeometry
 import LayoutEngine
 
-/// Mapa origem ↔ saída derivado do plano. PLAN.md §4, §9.2 e §12.2.
+/// Mapa origem ↔ saída derivado do plano.
 ///
 /// Espaços: na origem, o espaço de página da geometria da página (o mesmo de
 /// `Placement.sourceRect`); na saída, o espaço do usuário da página gravada
@@ -73,7 +73,7 @@ public struct PlanMapping: Sendable {
         }
     }
 
-    /// Mapa inverso (§12.2). Com colocações sobrepostas na saída, vale a desenhada
+    /// Mapa inverso. Com colocações sobrepostas na saída, vale a desenhada
     /// por último (a que aparece). `nil` fora de toda colocação.
     public func unmap(point: CGPoint, onOutputPage page: Int) -> (sourcePage: Int, point: CGPoint)? {
         for i in (byOutput[page] ?? []).reversed() {

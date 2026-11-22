@@ -1,7 +1,7 @@
 import AppCore
 import SwiftUI
 
-/// Faixa inferior: páginas de saída com selos de aviso (§13).
+/// Faixa inferior: páginas de saída com selos de aviso.
 struct ThumbnailStrip: View {
     let item: DocumentItem
     @Environment(\.displayScale) private var displayScale

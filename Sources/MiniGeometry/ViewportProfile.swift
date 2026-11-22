@@ -4,7 +4,7 @@ public enum PageTurn: String, Codable, Sendable {
     case horizontal, verticalContinuous
 }
 
-/// Área útil real de um leitor no mini. PLAN.md §3.
+/// Área útil real de um leitor no mini.
 ///
 /// Todos os tamanhos estão em pontos PDF físicos: uma página de saída com
 /// `sizePt` aberta nesse leitor aparece em escala 1:1.

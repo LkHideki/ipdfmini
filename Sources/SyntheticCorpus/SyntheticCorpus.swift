@@ -2,7 +2,7 @@ import CoreGraphics
 import Foundation
 import MiniGeometry
 
-// Gerador de PDFs sintéticos com geometria conhecida (PLAN.md §15.1).
+// Gerador de PDFs sintéticos com geometria conhecida.
 // Todo retângulo da verdade está em espaço de página (ver `PageGeometry`).
 
 public enum Scenario: String, CaseIterable, Sendable {
