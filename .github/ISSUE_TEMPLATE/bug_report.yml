@@ -1,0 +1,35 @@
+name: Bug
+description: Algo não funciona ou um PDF sai mal adaptado.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: O que aconteceu
+      description: O que você esperava e o que viu.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Como reproduzir
+      description: Passos, ou o comando da CLI com as opções usadas.
+    validations:
+      required: true
+  - type: input
+    id: strategy
+    attributes:
+      label: Estratégia escolhida
+      description: Aparece no inspetor (ex. "Recorte · retrato") ou na saída de `ipdfmini plan`.
+  - type: input
+    id: macos
+    attributes:
+      label: Versão do macOS
+      placeholder: "26.2"
+    validations:
+      required: true
+  - type: textarea
+    id: pdf
+    attributes:
+      label: PDF de exemplo
+      description: Se puder, anexe um PDF que reproduza o problema. Não envie documentos com dados pessoais ou protegidos por direito autoral.

@@ -1,5 +1,7 @@
 # iPDFmini
 
+[![CI](https://github.com/LkHideki/ipdfmini/actions/workflows/ci.yml/badge.svg)](https://github.com/LkHideki/ipdfmini/actions/workflows/ci.yml)
+
 App de Mac que adapta PDFs para ler no iPad mini 7. Ele corta as margens, escolhe uma escala que deixa a letra num tamanho legível na tela de 8,3" e mantém sumário, links e anotações funcionando.
 
 Você arrasta um PDF ou uma pasta inteira, confere o resultado numa prévia com a moldura do iPad e manda para o iPad por AirDrop. O arquivo original nunca é alterado.
@@ -42,6 +44,10 @@ scripts/test.sh
 ```
 
 O script existe porque as Command Line Tools não acham sozinhas o plugin do Swift Testing. Os testes geram os próprios PDFs, com a geometria conhecida, e não precisam de arquivos externos.
+
+## Contribuindo
+
+Bugs, PDFs que saem mal adaptados e pull requests são bem-vindos; veja [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Licença
 
